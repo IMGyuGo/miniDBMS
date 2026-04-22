@@ -5,14 +5,14 @@
  * interface.h — SQL 엔진 공통 계약
  *
  * 역할:
- *   Role A (B+Tree 저장 코어)         : include/bptree.h, src/bptree/*
- *   Role B (인덱스/파일 일관성)       : include/index_manager.h, src/index/*
- *   Role C (SQL 입력/검증 + API 계약) : src/input/*, src/parser/*,
- *                                       src/schema/*, src/http/*,
+ *   Role A (B+Tree 저장 코어)         : include/bptree.h, src/bptree/ 이하
+ *   Role B (인덱스/파일 일관성)       : include/index_manager.h, src/index/ 이하
+ *   Role C (SQL 입력/검증 + API 계약) : src/input/, src/parser/,
+ *                                       src/schema/, src/http/,
  *                                       include/api_contract.h
- *   Role D (실행/CLI + 서버 런타임)   : src/executor/*, src/main.c,
- *                                       src/service/*, src/server/*,
- *                                       src/threadpool/*
+ *   Role D (실행/CLI + 서버 런타임)   : src/executor/, src/main.c,
+ *                                       src/service/, src/server/,
+ *                                       src/threadpool/
  *
  * 이 파일의 역할:
  *   1. SQL 엔진 내부에서 Role C와 Role D가 공유하는 핵심 자료구조 계약.

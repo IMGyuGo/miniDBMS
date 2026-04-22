@@ -5,7 +5,7 @@
 운영 기준:
 
 - 저장소 진입점: [AGENT.md](../../AGENT.md)
-- 기준 분담안: [../4인_역할분담_및_진행계획_3차2.md](../4인_역할분담_및_진행계획_3차2.md)
+- 기준 분담안: [../4인_역할분담_및_진행계획.md](../4인_역할분담_및_진행계획.md)
 
 ## 빠른 소유권 요약
 
@@ -24,6 +24,8 @@
 - `include/interface.h`
 - `Makefile`
 - `scripts/check_ownership.sh`
+- `docs/4인_역할분담_및_진행계획.md`
+- `docs/ai_convention.md`
 - `docs/roles/**`
 - `include/db_service.h`
 - `include/server_api.h`

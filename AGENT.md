@@ -2,7 +2,7 @@
 
 이 파일은 이 저장소에서 작업하기 전에 가장 먼저 읽는 기준 문서다.
 
-현재 작업 기준안은 [docs/4인_역할분담_및_진행계획_3차2.md](docs/4인_역할분담_및_진행계획_3차2.md) 이고,
+현재 작업 기준안은 [docs/4인_역할분담_및_진행계획.md](docs/4인_역할분담_및_진행계획.md) 이고,
 실제 역할별 작업 범위와 침범 방지 규칙은 `AGENT.md` 와 `docs/roles/*.md` 를 기준으로 운영한다.
 
 ---
@@ -43,6 +43,8 @@
 - `include/interface.h`
 - `Makefile`
 - `scripts/check_ownership.sh`
+- `docs/4인_역할분담_및_진행계획.md`
+- `docs/ai_convention.md`
 - `docs/roles/**`
 - `include/db_service.h` (신규 공용 서비스 계약)
 - `include/server_api.h` (신규 서버 공용 설정 계약)
@@ -180,7 +182,7 @@ HTTP request
 
 ## 9. 문서 참조
 
-- 기준 분담안: [docs/4인_역할분담_및_진행계획_3차2.md](docs/4인_역할분담_및_진행계획_3차2.md)
+- 기준 분담안: [docs/4인_역할분담_및_진행계획.md](docs/4인_역할분담_및_진행계획.md)
 - AI 작업 규약: [docs/ai_convention.md](docs/ai_convention.md)
 - 역할 빠른 참고: [docs/roles/README.md](docs/roles/README.md)
 - Role A: [docs/roles/ROLE_A.md](docs/roles/ROLE_A.md)

@@ -16,17 +16,17 @@
 # =============================================================
 
 # ── 파일 → 소유자 매핑 ────────────────────────────────────────
-# 반환값: "A:김용" | "B:김은재" | "C:김규민" | "D:김원우" | "" (공통)
+# 반환값: "Role A (...)" | "Role B (...)" | "Role C (...)" | "Role D (...)" | "" (공통)
 get_owner() {
     case "$1" in
         include/bptree.h|src/bptree/*|tests/test_bptree.c)
-            echo "A:김용" ;;
+            echo "Role A (B+Tree 저장 코어)" ;;
         include/index_manager.h|src/index/*|tests/test_index.c)
-            echo "B:김은재" ;;
-        src/input/*|src/parser/*|src/schema/*|src/http/*|include/api_contract.h|tests/test_parser.c|tests/test_schema.c|tests/test_http.c|docs/api_contract.md)
-            echo "C:김규민" ;;
+            echo "Role B (인덱스/파일 일관성)" ;;
+        src/input/*|src/parser/*|src/schema/*|src/http/*|include/api_contract.h|tests/test_parser.c|tests/test_schema.c|tests/test_http.c)
+            echo "Role C (SQL 입력/검증 + API 계약/HTTP 메시지)" ;;
         src/executor/*|src/main.c|src/server/*|src/threadpool/*|src/service/*|tests/test_executor.c|tests/test_threadpool.c|tests/test_api.c|tests/test_concurrency.c)
-            echo "D:김원우" ;;
+            echo "Role D (실행/CLI + 서버 런타임)" ;;
         *)
             echo "" ;; # 공통 파일 (누구나 수정 가능)
     esac
@@ -35,11 +35,29 @@ get_owner() {
 # ── 공통 파일이지만 전원 합의 필요한 파일 ──────────────────────
 needs_consensus() {
     case "$1" in
-        include/interface.h|Makefile|AGENT.md|scripts/check_ownership.sh|docs/roles/*|include/api_contract.h|include/db_service.h|include/server_api.h)
+        include/interface.h|Makefile|AGENT.md|scripts/check_ownership.sh|docs/4인_역할분담_및_진행계획.md|docs/ai_convention.md|docs/roles/*|include/db_service.h|include/server_api.h)
             return 0 ;;
         *)
             return 1 ;;
     esac
+}
+
+append_unique_owner() {
+    local owner="$1"
+
+    if [ -z "$owner" ]; then
+        return
+    fi
+
+    if printf '%s\n' "$OWNERS_FOUND" | grep -Fxq "$owner"; then
+        return
+    fi
+
+    if [ -n "$OWNERS_FOUND" ]; then
+        OWNERS_FOUND="${OWNERS_FOUND}"$'\n'"$owner"
+    else
+        OWNERS_FOUND="$owner"
+    fi
 }
 
 # ── 스테이징된 파일 목록 확인 ──────────────────────────────────
@@ -55,19 +73,11 @@ echo "[OWNERSHIP] 스테이징된 파일 검증 중..."
 # ── 소유자 수집 ────────────────────────────────────────────────
 OWNERS_FOUND=""
 WARNED_CONSENSUS=0
-VIOLATION_FILES=""
 
 while IFS= read -r f; do
     owner=$(get_owner "$f")
 
-    if [ -n "$owner" ]; then
-        # 이미 수집된 소유자인지 확인
-        if echo "$OWNERS_FOUND" | grep -qF "$owner"; then
-            : # 이미 있음
-        else
-            OWNERS_FOUND="$OWNERS_FOUND $owner"
-        fi
-    fi
+    append_unique_owner "$owner"
 
     # 전원 합의 필요 파일 경고
     if needs_consensus "$f"; then
@@ -78,12 +88,12 @@ while IFS= read -r f; do
 done <<< "$STAGED"
 
 # ── 소유자 수 계산 ─────────────────────────────────────────────
-OWNER_COUNT=$(echo "$OWNERS_FOUND" | tr ' ' '\n' | grep -c '[A-D]:')
+OWNER_COUNT=$(printf '%s\n' "$OWNERS_FOUND" | sed '/^$/d' | wc -l | tr -d ' ')
 
 if [ "$OWNER_COUNT" -gt 1 ]; then
     echo ""
     echo "  [OWNERSHIP VIOLATION] 한 커밋에 여러 소유자의 파일이 섞여 있습니다:"
-    echo "$OWNERS_FOUND" | tr ' ' '\n' | grep '[A-D]:' | while read -r o; do
+    printf '%s\n' "$OWNERS_FOUND" | sed '/^$/d' | while IFS= read -r o; do
         echo "    - $o"
     done
     echo ""
@@ -103,7 +113,7 @@ fi
 
 # ── 통과 ───────────────────────────────────────────────────────
 if [ "$OWNER_COUNT" -eq 1 ]; then
-    ROLE=$(echo "$OWNERS_FOUND" | tr ' ' '\n' | grep '[A-D]:')
+    ROLE=$(printf '%s\n' "$OWNERS_FOUND" | sed '/^$/d')
     echo "  → 소유자: $ROLE"
 fi
 if [ "$WARNED_CONSENSUS" -gt 0 ]; then

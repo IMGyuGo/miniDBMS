@@ -8,7 +8,7 @@
 
 1. 역할별 파일 침범을 막는다.
 2. 공통 인터페이스 계약을 함부로 바꾸지 않게 한다.
-3. API 서버 확장 시 계층이 섞이지 않도록 판단 기준을 고정한다.
+3. API 서버 확장 시 메시지 계층과 런타임 계층이 섞이지 않도록 판단 기준을 고정한다.
 
 이 문서는 구현 문서가 아니라 작업 규약 문서다.
 
@@ -19,7 +19,7 @@
 AI는 작업 전에 아래 순서로 문서를 확인한다.
 
 1. `AGENT.md`
-2. `docs/4인_역할분담_및_진행계획_3차2.md`
+2. `docs/4인_역할분담_및_진행계획.md`
 3. `docs/roles/README.md`
 4. 자기 역할에 해당하는 `docs/roles/ROLE_*.md`
 5. 관련 공통 헤더
@@ -54,12 +54,19 @@ AI는 작업 전에 아래 순서로 문서를 확인한다.
 공통 합의 파일:
 
 - `AGENT.md`
-- `include/interface.h`
-- `Makefile`
-- `scripts/check_ownership.sh`
+- `docs/4인_역할분담_및_진행계획.md`
+- `docs/ai_convention.md`
 - `docs/roles/**`
+- `include/interface.h`
 - `include/db_service.h`
 - `include/server_api.h`
+- `Makefile`
+- `scripts/check_ownership.sh`
+
+설명:
+
+- `include/api_contract.h` 는 Role C 1차 소유지만 Role D가 런타임에서 사용하므로 변경 시 Role D 확인이 필요하다.
+- `README.md`, `samples/**` 같은 공통 자료는 역할 작업에서 함께 갱신할 수 있지만, 규약 문서와 공용 계약 문서는 합의 후 수정한다.
 
 ---
 
@@ -76,12 +83,15 @@ AI는 작업 전에 아래 순서로 문서를 확인한다.
 - HTTP 요청/응답 메시지 계약만 둔다.
 - route, method, request option, application-level error code를 둔다.
 - 엔진 내부 구조(`AST`, `ResultSet`)는 직접 넣지 않는다.
+- `ApiQueryRequest`, `ApiResponseMeta` 같은 transport 구조는 여기서 관리한다.
 
 ### `include/db_service.h`
 
 - 서버가 엔진을 호출하는 공용 서비스 경계를 둔다.
 - transport 비의존적이어야 한다.
 - parser/executor를 직접 우회 호출하지 않도록 service API로 고정한다.
+- 현재 핵심 진입점은 `db_service_execute_sql(const char *sql, const DBServiceOptions *opts, DBServiceResult *out)` 이다.
+- 서비스 계층 오류 메시지는 `DBServiceResult.message`, HTTP 응답 오류 문자열은 `ApiResponseMeta.error` 에 둔다.
 
 ### `include/bptree.h`
 
@@ -101,12 +111,17 @@ AI는 작업 전에 아래 순서로 문서를 확인한다.
 
 API 서버를 추가할 때 AI는 아래 계층 분리를 지킨다.
 
+런타임 계층:
+
+- `src/server/**` : accept loop / connection lifecycle / 종료 흐름
+- `src/threadpool/**` : worker / queue / 스케줄링
+
+요청 처리 경로:
+
 ```text
 HTTP request
   -> src/http/*       : message parsing / response formatting
   -> src/service/*    : engine call boundary
-  -> src/server/*     : accept loop / runtime control
-  -> src/threadpool/* : worker / queue
   -> src/executor/*   : SQL execution
   -> src/index/*      : storage index
   -> src/bptree/*     : tree core
@@ -115,7 +130,7 @@ HTTP request
 규칙:
 
 1. `src/http/**` 는 메시지 규약만 다룬다.
-2. `src/server/**` 는 소켓 accept loop, 요청 분배, 종료 흐름을 맡는다.
+2. `src/server/**` 는 소켓 accept loop, 연결 관리, 종료 흐름을 맡는다.
 3. `src/threadpool/**` 는 worker lifecycle과 queue만 맡는다.
 4. `src/service/**` 는 transport와 executor 사이의 단일 공용 실행 경계다.
 5. `src/http/**` 와 `src/server/**` 의 책임을 한 파일에 섞지 않는다.
@@ -152,7 +167,17 @@ AI가 새 필드나 새 구조체를 추가하려고 할 때는 아래 질문을
 
 ---
 
-## 9. 출력 및 I/O 규칙
+## 9. 코드/에러 처리 규칙
+
+1. 엔진 내부 정수 반환 함수는 `SQL_OK(0)` / `SQL_ERR(-1)` 패턴을 유지한다.
+2. 포인터 반환 함수는 성공 시 유효 포인터, 실패 시 `NULL` 을 반환한다.
+3. 결과 데이터는 `stdout`, 진단과 오류는 `stderr` 로 분리한다.
+4. 서비스 계층은 `DBServiceResult.message` 로 오류를 전달하고, transport 계층은 이를 `ApiResponseMeta.error` 로 매핑한다.
+5. `ExecResult` 같은 별도 타입을 가정하지 않는다. 실제 계약은 `DBServiceResult` 와 `ApiResponseMeta` 가 기준이다.
+
+---
+
+## 10. 출력 및 I/O 규칙
 
 1. 결과 row는 `stdout`
 2. 타이밍/진단은 `stderr`
@@ -161,7 +186,7 @@ AI가 새 필드나 새 구조체를 추가하려고 할 때는 아래 질문을
 
 ---
 
-## 10. 테스트 규칙
+## 11. 테스트 규칙
 
 1. 단위 테스트는 역할별 소유를 따른다.
 2. 구현 파일을 수정하면 관련 테스트도 같이 수정한다.
@@ -170,7 +195,7 @@ AI가 새 필드나 새 구조체를 추가하려고 할 때는 아래 질문을
 
 ---
 
-## 11. 커밋 규칙
+## 12. 커밋 규칙
 
 1. 한 커밋에는 가능한 한 한 역할의 소유 파일만 담는다.
 2. 공통 파일이 섞이면 변경 이유가 분명해야 한다.
@@ -178,7 +203,7 @@ AI가 새 필드나 새 구조체를 추가하려고 할 때는 아래 질문을
 
 ---
 
-## 12. 금지 예시
+## 13. 금지 예시
 
 - HTTP 응답 형식을 바꾸려고 `src/executor/**` 에 JSON 직렬화 코드를 넣는 것
 - 서버 성능 문제를 해결하려고 `src/http/**` 에 worker queue를 구현하는 것
@@ -187,12 +212,12 @@ AI가 새 필드나 새 구조체를 추가하려고 할 때는 아래 질문을
 
 ---
 
-## 13. 최종 기준
+## 14. 최종 기준
 
 작업 중 규칙이 충돌하면 아래 우선순위를 따른다.
 
 1. `AGENT.md`
 2. `include/interface.h`, `include/api_contract.h`, `include/db_service.h`
 3. `docs/roles/*.md`
-4. `docs/4인_역할분담_및_진행계획_3차2.md`
+4. `docs/4인_역할분담_및_진행계획.md`
 5. 이 문서
