@@ -39,6 +39,50 @@ static int test_parse_invalid_route(void) {
            error_meta.http_status == 404;
 }
 
+static int test_parse_invalid_boolean_option(void) {
+    ApiQueryRequest request;
+    ApiResponseMeta error_meta;
+    const char *body =
+        "{\"sql\":\"SELECT * FROM users\",\"compare\":\"maybe\"}";
+
+    if (http_parse_query_request("POST", "/query", body, &request, &error_meta)) {
+        return 0;
+    }
+
+    return error_meta.code == API_CODE_BAD_REQUEST &&
+           error_meta.http_status == 400 &&
+           strcmp(error_meta.error, "invalid compare field") == 0;
+}
+
+static int test_parse_blank_sql(void) {
+    ApiQueryRequest request;
+    ApiResponseMeta error_meta;
+    const char *body = "{\"sql\":\"   \\t   \"}";
+
+    if (http_parse_query_request("POST", "/query", body, &request, &error_meta)) {
+        return 0;
+    }
+
+    return error_meta.code == API_CODE_BAD_REQUEST &&
+           error_meta.http_status == 400 &&
+           strcmp(error_meta.error, "empty sql field") == 0;
+}
+
+static int test_parse_invalid_request_id(void) {
+    ApiQueryRequest request;
+    ApiResponseMeta error_meta;
+    const char *body =
+        "{\"request_id\":123,\"sql\":\"SELECT * FROM users\"}";
+
+    if (http_parse_query_request("POST", "/query", body, &request, &error_meta)) {
+        return 0;
+    }
+
+    return error_meta.code == API_CODE_BAD_REQUEST &&
+           error_meta.http_status == 400 &&
+           strcmp(error_meta.error, "invalid request_id field") == 0;
+}
+
 static int test_serialize_query_response(void) {
     ApiResponseMeta meta;
     DBServiceResult service_result;
@@ -97,6 +141,21 @@ int main(void) {
 
     if (!test_parse_invalid_route()) {
         fprintf(stderr, "test_parse_invalid_route failed\n");
+        return 1;
+    }
+
+    if (!test_parse_invalid_boolean_option()) {
+        fprintf(stderr, "test_parse_invalid_boolean_option failed\n");
+        return 1;
+    }
+
+    if (!test_parse_blank_sql()) {
+        fprintf(stderr, "test_parse_blank_sql failed\n");
+        return 1;
+    }
+
+    if (!test_parse_invalid_request_id()) {
+        fprintf(stderr, "test_parse_invalid_request_id failed\n");
         return 1;
     }
 
