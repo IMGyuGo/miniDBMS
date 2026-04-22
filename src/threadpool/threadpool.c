@@ -11,15 +11,18 @@
  *
  * 스레드 안전성:
  *   - 모든 큐 접근은 mutex 로 보호한다.
- *   - 엔진 호출(db_service_execute_sql) 보호는 g_engine_lock 이 담당한다.
+ *   - 엔진 호출(db_service_execute_sql) 보호는 g_engine_rwlock 이 담당한다.
+ *     SELECT → rdlock (동시 읽기 허용), INSERT → wrlock (단독 쓰기).
  *
  * Role C 연동:
  *   - JSON 직렬화/파싱은 src/http/http_message.h 의 함수를 사용한다.
  *   - 상태코드 매핑은 http_response_meta_from_service() 에 위임한다.
  * ========================================================= */
 
+#define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -33,11 +36,12 @@ static void *worker_loop(void *arg);
 static void  send_http_response(int fd, int http_status,
                                 const char *body, size_t body_len);
 
-/* ── 엔진 보호용 전역 mutex ──────────────────────────────
- * INSERT/SELECT 모두 단순 mutex 로 직렬화한다 (MVP 안전성 우선).
- * TODO(RoleD): 성능 개선 시 pthread_rwlock_t 로 교체 검토.
+/* ── 엔진 보호용 rwlock ───────────────────────────────────
+ * SELECT  → rdlock  (동시 읽기 허용)
+ * INSERT  → wrlock  (단독 쓰기)
+ * 판별은 sql 문자열 앞 6자 대소문자 비교로 처리한다.
  * --------------------------------------------------------- */
-static pthread_mutex_t g_engine_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_rwlock_t g_engine_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 /* ── Threadpool 구조체 ────────────────────────────────────── */
 struct Threadpool {
@@ -178,9 +182,16 @@ static void *worker_loop(void *arg) {
         DBServiceResult result;
         db_service_result_init(&result);
 
-        pthread_mutex_lock(&g_engine_lock);
+        /* SELECT 는 rdlock(동시 읽기), 나머지(INSERT 등)는 wrlock(단독 쓰기) */
+        int is_select = (strncasecmp(job.sql, "SELECT", 6) == 0);
+        if (is_select)
+            pthread_rwlock_rdlock(&g_engine_rwlock);
+        else
+            pthread_rwlock_wrlock(&g_engine_rwlock);
+
         db_service_execute_sql(job.sql, &opts, &result);
-        pthread_mutex_unlock(&g_engine_lock);
+
+        pthread_rwlock_unlock(&g_engine_rwlock);
 
         /* ── Role C: DBServiceResult → ApiResponseMeta 변환 ── */
         ApiResponseMeta meta;
