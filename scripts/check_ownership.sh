@@ -19,13 +19,13 @@
 # 반환값: "A:김용" | "B:김은재" | "C:김규민" | "D:김원우" | "" (공통)
 get_owner() {
     case "$1" in
-        include/bptree.h|src/bptree/bptree.c)
+        include/bptree.h|src/bptree/*|tests/test_bptree.c)
             echo "A:김용" ;;
-        include/index_manager.h|src/index/index_manager.c)
+        include/index_manager.h|src/index/*|tests/test_index.c)
             echo "B:김은재" ;;
-        src/input/lexer.c|src/parser/parser.c|src/schema/schema.c)
+        src/input/*|src/parser/*|src/schema/*|src/http/*|include/api_contract.h|tests/test_parser.c|tests/test_schema.c|tests/test_http.c|docs/api_contract.md)
             echo "C:김규민" ;;
-        src/executor/executor.c|src/main.c)
+        src/executor/*|src/main.c|src/server/*|src/threadpool/*|src/service/*|tests/test_executor.c|tests/test_threadpool.c|tests/test_api.c|tests/test_concurrency.c)
             echo "D:김원우" ;;
         *)
             echo "" ;; # 공통 파일 (누구나 수정 가능)
@@ -35,7 +35,7 @@ get_owner() {
 # ── 공통 파일이지만 전원 합의 필요한 파일 ──────────────────────
 needs_consensus() {
     case "$1" in
-        include/interface.h|Makefile)
+        include/interface.h|Makefile|AGENT.md|scripts/check_ownership.sh|docs/roles/*|include/api_contract.h|include/db_service.h|include/server_api.h)
             return 0 ;;
         *)
             return 1 ;;
