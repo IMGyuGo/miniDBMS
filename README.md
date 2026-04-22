@@ -70,31 +70,6 @@ make test                   # 단위 테스트 전체 실행
 
 ---
 
-## 성능 비교
-
-### 스레드 풀 speedup
-
-```bash
-./test_threadpool 64
-```
-
-```
-workers  elapsed(ms)  speedup
--------  -----------  -------
-1                480   1.00x
-2                245   1.96x
-4                125   3.84x
-```
-
-### B+Tree vs 선형 탐색
-
-| 조건 | access_path | elapsed_ms | tree_io |
-|------|-------------|------------|---------|
-| `WHERE id = 5001` | `index:id:eq` | 0.136 | 2 |
-| `WHERE age = 25` | `linear` | 0.636 | 0 |
-
----
-
 ## 테스트 케이스
 
 | 구분 | 테스트 | 검증 내용 |
@@ -120,3 +95,24 @@ workers  elapsed(ms)  speedup
 | B+Tree | 노드 분할 후 탐색 | 분할 전 키 모두 정상 조회 |
 | Executor | 빈 SQL / 잘못된 SQL | `BAD_REQUEST` 반환, 서버 크래시 없음 |
 | HTTP | 미등록 라우트 | `{ "ok": false, "code": "UNSUPPORTED_ROUTE" }` 반환 |
+
+---
+
+## 설계 쟁점
+
+**mutex 대신 rwlock** — mutex는 SELECT끼리도 직렬로 처리된다. rwlock을 쓰면 SELECT는 동시에, INSERT만 단독으로 실행할 수 있다.
+
+**스레드 고정 4개** — 요청마다 스레드를 생성하면 OS 자원 비용이 생기고 요청이 몰릴 때 스레드가 폭발한다. 미리 4개를 만들어두고 재사용한다.
+
+**`WHERE age = 25` → linear** — age 인덱스는 BETWEEN 범위 탐색용으로 만들었다. equality는 같은 age를 가진 row가 많을 때 offset을 전부 fetch해야 해서 전체 스캔보다 오히려 느릴 수 있다.
+
+**재시작 시 인덱스 복구** — B+Tree는 메모리 구조라 서버가 꺼지면 사라진다. 재시작 시 `.dat` 파일을 처음부터 읽어 인덱스를 다시 올린다.
+
+**동시성 개선 여지** — 현재는 전역 rwlock 하나로 DB 엔진 전체를 막는다. INSERT 하나가 들어오면 모든 SELECT가 대기한다. 실제 DB는 이를 단계적으로 개선한다.
+
+| 단계 | 방식 | 효과 |
+|------|------|------|
+| Table lock | 테이블마다 별도 rwlock | users INSERT 중에도 orders SELECT 가능 |
+| Lock 범위 축소 | 파싱/스키마 검증은 lock 없이, 파일 접근 구간만 lock | lock 보유 시간 단축 |
+| Row/Page lock | B+Tree leaf 단위 lock | 다른 row 동시 접근 가능 |
+| MVCC | writer는 새 버전 생성, reader는 스냅샷 읽기 | reader가 writer를 기다리지 않음 |
