@@ -18,7 +18,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <unistd.h>
+
+#ifdef _WIN32
+#  include <direct.h>
+#  define TEST_MKDIR(path) _mkdir(path)
+#else
+#  include <sys/stat.h>
+#  define TEST_MKDIR(path) mkdir(path, 0755)
+#endif
 
 #include "../include/interface.h"
 #include "../include/index_manager.h"
@@ -43,10 +52,18 @@ static int g_fail = 0;
 /* 테스트용 임시 테이블 이름 */
 #define TEST_TABLE "test_exec_tmp"
 
+static int ensure_dir(const char *path) {
+    if (TEST_MKDIR(path) == 0) return 1;
+    return errno == EEXIST;
+}
+
 /* 테스트 전 임시 파일 및 스키마 생성 */
 static int setup_test_env(void) {
     /* data 디렉터리 생성 */
-    system("mkdir -p data");
+    if (!ensure_dir("data")) {
+        fprintf(stderr, "setup: cannot create data directory\n");
+        return -1;
+    }
     /* 기존 임시 파일 초기화 (remove 실패 대비 truncate로 처리) */
     remove("data/" TEST_TABLE ".dat");
     {
@@ -55,7 +72,10 @@ static int setup_test_env(void) {
     }
 
     /* 임시 스키마 파일 생성 */
-    system("mkdir -p schema");
+    if (!ensure_dir("schema")) {
+        fprintf(stderr, "setup: cannot create schema directory\n");
+        return -1;
+    }
     FILE *sf = fopen("schema/" TEST_TABLE ".schema", "w");
     if (!sf) {
         fprintf(stderr, "setup: cannot create schema file\n");

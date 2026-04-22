@@ -1,0 +1,195 @@
+{
+  "info": {
+    "name": "miniDBMS API Smoke",
+    "_postman_id": "2b8b96d4-dfd0-4ddf-8a2f-c1ddf9b4cc01",
+    "description": "Minimal Postman collection for miniDBMS server smoke checks.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8080"
+    },
+    {
+      "key": "user_id",
+      "value": "5001"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "var body = pm.response.json();",
+              "pm.test('health payload is OK', function () {",
+              "  pm.expect(body.ok).to.eql(true);",
+              "  pm.expect(body.code).to.eql('OK');",
+              "  pm.expect(body.message).to.eql('healthy');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/health"
+      }
+    },
+    {
+      "name": "Insert User",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "var body = pm.response.json();",
+              "pm.test('insert succeeded', function () {",
+              "  pm.expect(body.ok).to.eql(true);",
+              "  pm.expect(body.rows_affected).to.eql(1);",
+              "  pm.expect(body.has_payload).to.eql(false);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sql\": \"INSERT INTO users VALUES ({{user_id}}, 'postman-user', 27, 'postman-user@example.com');\"\n}"
+        },
+        "url": "{{base_url}}/query"
+      }
+    },
+    {
+      "name": "Select By Id",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "var body = pm.response.json();",
+              "pm.test('select returns one row', function () {",
+              "  pm.expect(body.ok).to.eql(true);",
+              "  pm.expect(body.has_payload).to.eql(true);",
+              "  pm.expect(body.row_count).to.eql(1);",
+              "  pm.expect(body.rows[0].id).to.eql(pm.collectionVariables.get('user_id'));",
+              "});",
+              "pm.test('profile is included', function () {",
+              "  pm.expect(body.profile).to.be.an('object');",
+              "  pm.expect(body.profile.access_path).to.be.a('string');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sql\": \"SELECT * FROM users WHERE id = {{user_id}};\",\n  \"include_profile\": true\n}"
+        },
+        "url": "{{base_url}}/query"
+      }
+    },
+    {
+      "name": "Force Linear Range",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "var body = pm.response.json();",
+              "pm.test('range query succeeded', function () {",
+              "  pm.expect(body.ok).to.eql(true);",
+              "  pm.expect(body.has_payload).to.eql(true);",
+              "  pm.expect(body.profile).to.be.an('object');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sql\": \"SELECT * FROM users WHERE age BETWEEN 20 AND 30;\",\n  \"force_linear\": true,\n  \"include_profile\": true\n}"
+        },
+        "url": "{{base_url}}/query"
+      }
+    },
+    {
+      "name": "Invalid Route",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 404', function () {",
+              "  pm.response.to.have.status(404);",
+              "});",
+              "var body = pm.response.json();",
+              "pm.test('route error payload is returned', function () {",
+              "  pm.expect(body.ok).to.eql(false);",
+              "  pm.expect(body.code).to.eql('UNSUPPORTED_ROUTE');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sql\": \"SELECT * FROM users;\"\n}"
+        },
+        "url": "{{base_url}}/unknown"
+      }
+    }
+  ]
+}

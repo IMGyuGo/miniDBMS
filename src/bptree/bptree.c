@@ -158,8 +158,11 @@ static int valuelist_insert_sorted(BPValueList *list, long offset) {
 
     if (!list) return -1;
 
-    while (insert_at < list->count && list->offsets[insert_at] <= offset)
+    while (insert_at < list->count && list->offsets[insert_at] < offset)
         insert_at++;
+
+    if (insert_at < list->count && list->offsets[insert_at] == offset)
+        return 0;
 
     if (list->count == list->capacity) {
         int new_capacity = list->capacity * 2;
