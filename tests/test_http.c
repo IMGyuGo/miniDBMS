@@ -83,6 +83,21 @@ static int test_parse_invalid_request_id(void) {
            strcmp(error_meta.error, "invalid request_id field") == 0;
 }
 
+static int test_parse_error_keeps_request_id(void) {
+    ApiQueryRequest request;
+    ApiResponseMeta error_meta;
+    const char *body =
+        "{\"request_id\":\"req-err\",\"sql\":\"SELECT * FROM users\","
+        "\"compare\":\"maybe\"}";
+
+    if (http_parse_query_request("POST", "/query", body, &request, &error_meta)) {
+        return 0;
+    }
+
+    return strcmp(error_meta.request_id, "req-err") == 0 &&
+           strcmp(error_meta.error, "invalid compare field") == 0;
+}
+
 static int test_serialize_query_response(void) {
     ApiResponseMeta meta;
     DBServiceResult service_result;
@@ -120,12 +135,14 @@ static int test_serialize_query_response(void) {
     service_result.profile.row_count = 1;
 
     http_response_meta_from_service(&service_result, &meta);
+    strcpy(meta.request_id, "req-1");
 
     if (!http_serialize_query_response(&meta, &service_result, buffer, sizeof(buffer))) {
         return 0;
     }
 
     if (!strstr(buffer, "\"ok\":true")) return 0;
+    if (!strstr(buffer, "\"request_id\":\"req-1\"")) return 0;
     if (!strstr(buffer, "\"rows\"")) return 0;
     if (!strstr(buffer, "\"alice\"")) return 0;
     if (!strstr(buffer, "\"profile\"")) return 0;
@@ -156,6 +173,11 @@ int main(void) {
 
     if (!test_parse_invalid_request_id()) {
         fprintf(stderr, "test_parse_invalid_request_id failed\n");
+        return 1;
+    }
+
+    if (!test_parse_error_keeps_request_id()) {
+        fprintf(stderr, "test_parse_error_keeps_request_id failed\n");
         return 1;
     }
 

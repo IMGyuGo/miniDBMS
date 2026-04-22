@@ -124,6 +124,13 @@ DBServiceStatus db_service_execute_sql(const char *sql,
     }
 
     /* ── 1. 토큰화 ── */
+    if (opts->compare) {
+        out->status = DB_SERVICE_UNSUPPORTED;
+        snprintf(out->message, sizeof(out->message),
+                 "compare option not supported yet");
+        return out->status;
+    }
+
     TokenList *all_tokens = lexer_tokenize(sql);
     if (!all_tokens) {
         out->status = DB_SERVICE_PARSE_ERROR;

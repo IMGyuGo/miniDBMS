@@ -93,6 +93,7 @@ typedef struct {
     int      include_profile;
     int      row_count;
     int      rows_affected;
+    char     request_id[API_REQUEST_ID_MAX];
     char     error[API_ERROR_MAX_LEN];
 } ApiResponseMeta;
 

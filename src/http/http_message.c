@@ -42,14 +42,23 @@ static void set_error_meta(ApiResponseMeta *meta,
                            int http_status,
                            ApiCode code,
                            const char *message) {
+    char request_id[API_REQUEST_ID_MAX];
+
     if (!meta) return;
 
+    copy_text(request_id, sizeof(request_id), meta->request_id);
     memset(meta, 0, sizeof(*meta));
     meta->http_status = http_status;
     meta->code = code;
     meta->ok = 0;
     meta->has_payload = 0;
+    copy_text(meta->request_id, sizeof(meta->request_id), request_id);
     copy_text(meta->error, sizeof(meta->error), message);
+}
+
+static void set_meta_request_id(ApiResponseMeta *meta, const char *request_id) {
+    if (!meta) return;
+    copy_text(meta->request_id, sizeof(meta->request_id), request_id);
 }
 
 static const char *skip_ws(const char *p) {
@@ -363,6 +372,7 @@ int http_parse_query_request(const char *method,
                            "invalid request_id field");
             return 0;
         }
+        set_meta_request_id(error_meta, out->request_id);
     } else {
         out->request_id[0] = '\0';
     }
@@ -437,6 +447,10 @@ int http_serialize_query_response(const ApiResponseMeta *meta,
     if (!append_format(buffer, buffer_size, &offset, "\"http_status\":%d,", meta->http_status)) return 0;
     if (!append_format(buffer, buffer_size, &offset, "\"code\":")) return 0;
     if (!append_json_escaped(buffer, buffer_size, &offset, api_code_name(meta->code))) return 0;
+    if (meta->request_id[0] != '\0') {
+        if (!append_format(buffer, buffer_size, &offset, ",\"request_id\":")) return 0;
+        if (!append_json_escaped(buffer, buffer_size, &offset, meta->request_id)) return 0;
+    }
     if (!append_format(buffer, buffer_size, &offset, ",\"row_count\":%d,", meta->row_count)) return 0;
     if (!append_format(buffer, buffer_size, &offset, "\"rows_affected\":%d,", meta->rows_affected)) return 0;
     if (!append_format(buffer, buffer_size, &offset, "\"has_payload\":%s,",

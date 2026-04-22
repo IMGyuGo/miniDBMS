@@ -173,6 +173,8 @@ int server_run(int port, int num_threads) {
             full_meta.http_status = 503;
             full_meta.code        = API_CODE_QUEUE_FULL;
             full_meta.ok          = 0;
+            strncpy(full_meta.request_id, req.request_id,
+                    sizeof(full_meta.request_id) - 1);
             strncpy(full_meta.error, "server queue full",
                     sizeof(full_meta.error) - 1);
 
