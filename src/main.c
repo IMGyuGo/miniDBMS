@@ -24,6 +24,15 @@
  * 5. statement마다 파싱 / 검증 / 실행을 수행한다.
  *
  * SELECT는 일반 모드, 강제 linear 모드, compare 모드로 실행될 수 있다.
+ *
+ * 서버 모드 전체 흐름:
+ * 1. main() 이 --server / --threads 옵션을 읽는다.
+ * 2. server_run(port, num_threads) 으로 HTTP 서버를 시작한다.
+ * 3. server.c 가 클라이언트의 raw HTTP 요청을 읽고 method/path/body 를 분리한다.
+ * 4. http_parse_query_request() 가 JSON body 에서 sql/options/request_id 를 꺼낸다.
+ * 5. server.c 가 그 값을 ThreadpoolJob 으로 복사해서 queue 에 넣는다.
+ * 6. worker thread 가 job.sql 을 db_service_execute_sql() 로 실행한다.
+ * 7. 실행 결과를 JSON 으로 직렬화해서 클라이언트에게 HTTP 응답으로 돌려준다.
  */
 
 typedef enum {
@@ -360,7 +369,10 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    /* ── 서버 모드 ── */
+    /*
+     * 서버 모드는 여기서 CLI 경로와 갈라진다.
+     * 이후 실제 요청 처리는 src/server/server.c 의 accept loop 가 맡는다.
+     */
     if (server_mode) {
         if (server_port <= 0 || server_port > 65535) {
             fprintf(stderr, "Error: invalid port '%d'\n", server_port);

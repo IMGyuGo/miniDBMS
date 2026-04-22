@@ -11,6 +11,15 @@
  *   - transport 정보(소켓 fd, HTTP 헤더)를 직접 받지 않는다.
  *   - 동기화(lock) 책임은 server/threadpool 런타임 계층에 있다.
  *   - MVP 기준 한 호출은 하나의 logical statement만 처리한다.
+ *
+ * API 서버 기준 위치:
+ *   server.c / threadpool.c 는 JSON 을 직접 실행하지 않는다.
+ *   JSON body 에서 뽑은 req.sql 을 결국 이 파일의
+ *   db_service_execute_sql() 로 넘겨서 실제 엔진 실행을 시작한다.
+ *
+ * 따라서 이 파일은
+ *   "HTTP 계층과 SQL 엔진 사이의 단일 실행 입구"
+ * 로 보면 된다.
  * ========================================================= */
 
 #include <stdio.h>
@@ -110,6 +119,19 @@ void db_service_result_free(DBServiceResult *result) {
 DBServiceStatus db_service_execute_sql(const char *sql,
                                        const DBServiceOptions *opts,
                                        DBServiceResult *out) {
+    /*
+     * 요청 흐름 관점에서 보면 이 함수는 아래 단계를 한 번에 묶는다.
+     *
+     *   raw SQL string
+     *     -> lexer_tokenize
+     *     -> parser_parse
+     *     -> schema_load / schema_validate
+     *     -> index_init
+     *     -> db_select_mode 또는 db_insert
+     *     -> DBServiceResult 반환
+     *
+     * 즉 worker 입장에서는 "job.sql 하나를 엔진에 넣고 결과를 받는 함수"다.
+     */
     /* opts 기본값 처리 */
     DBServiceOptions default_opts;
     if (!opts) {
@@ -138,7 +160,12 @@ DBServiceStatus db_service_execute_sql(const char *sql,
         return out->status;
     }
 
-    /* ── 2. multi-statement 검사 (MVP: 1개만 허용) ── */
+    /*
+     * ── 2. multi-statement 검사 (MVP: 1개만 허용) ──
+     *
+     * 현재 서버는 한 요청에 statement 하나만 처리한다.
+     * 예를 들어 "INSERT ...; SELECT ...;" 같은 입력은 여기서 거절한다.
+     */
     int semi_count = 0;
     TokenList *stmt_tokens = extract_first_statement(all_tokens, &semi_count);
 
@@ -202,7 +229,12 @@ DBServiceStatus db_service_execute_sql(const char *sql,
         return out->status;
     }
 
-    /* ── 7. 실행 ── */
+    /*
+     * ── 7. 실행 ──
+     *
+     * 이 지점부터는 parser/schema 단계를 지나 실제 executor 로 들어간다.
+     * SELECT 는 ResultSet 을, INSERT 는 rows_affected 를 결과로 남긴다.
+     */
     out->stmt_type       = ast->type;
     out->statement_count = 1;
 
