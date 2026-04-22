@@ -1,0 +1,31 @@
+$kind: http-request
+url: "{{base_url}}/query"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "sql": "SELECT * FROM users WHERE id = {{user_id}};",
+      "include_profile": true
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status is 200', function () {
+        pm.response.to.have.status(200);
+      });
+      var body = pm.response.json();
+      pm.test('select returns one row', function () {
+        pm.expect(body.ok).to.eql(true);
+        pm.expect(body.has_payload).to.eql(true);
+        pm.expect(body.row_count).to.eql(1);
+        pm.expect(body.rows[0].id).to.eql(pm.collectionVariables.get('user_id'));
+      });
+      pm.test('profile is included', function () {
+        pm.expect(body.profile).to.be.an('object');
+        pm.expect(body.profile.access_path).to.be.a('string');
+      });
+    language: text/javascript
+order: 3000

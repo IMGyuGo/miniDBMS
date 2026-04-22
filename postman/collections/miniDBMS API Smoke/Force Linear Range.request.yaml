@@ -1,0 +1,27 @@
+$kind: http-request
+url: "{{base_url}}/query"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "sql": "SELECT * FROM users WHERE age BETWEEN 20 AND 30;",
+      "force_linear": true,
+      "include_profile": true
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status is 200', function () {
+        pm.response.to.have.status(200);
+      });
+      var body = pm.response.json();
+      pm.test('range query succeeded', function () {
+        pm.expect(body.ok).to.eql(true);
+        pm.expect(body.has_payload).to.eql(true);
+        pm.expect(body.profile).to.be.an('object');
+      });
+    language: text/javascript
+order: 4000

@@ -251,6 +251,5 @@ DBServiceStatus db_service_execute_sql(const char *sql,
 
     schema_free(schema);
     parser_free(ast);
-    out->status = DB_SERVICE_OK;
-    return DB_SERVICE_OK;
+    return out->status;
 }

@@ -453,27 +453,23 @@ int http_serialize_query_response(const ApiResponseMeta *meta,
     }
     if (!append_format(buffer, buffer_size, &offset, ",\"row_count\":%d,", meta->row_count)) return 0;
     if (!append_format(buffer, buffer_size, &offset, "\"rows_affected\":%d,", meta->rows_affected)) return 0;
-    if (!append_format(buffer, buffer_size, &offset, "\"has_payload\":%s,",
-                       meta->has_payload ? "true" : "false")) return 0;
+    if (!append_format(buffer, buffer_size, &offset, "\"has_payload\":%s,", meta->has_payload ? "true" : "false")) return 0;
     if (!append_format(buffer, buffer_size, &offset, "\"error\":")) return 0;
     if (!append_json_escaped(buffer, buffer_size, &offset, meta->error)) return 0;
 
-    if (service_result && meta->has_payload) {
+    if (meta->has_payload && service_result && service_result->result_set) {
         if (!append_format(buffer, buffer_size, &offset, ",\"rows\":")) return 0;
         if (!append_rows(buffer, buffer_size, &offset, service_result->result_set)) return 0;
     }
 
-    if (service_result && service_result->has_profile) {
-        if (!append_format(buffer, buffer_size, &offset, ",\"profile\":{")) return 0;
-        if (!append_format(buffer, buffer_size, &offset, "\"elapsed_ms\":%.3f,",
-                           service_result->profile.elapsed_ms)) return 0;
-        if (!append_format(buffer, buffer_size, &offset, "\"tree_io\":%d,",
-                           service_result->profile.tree_io)) return 0;
-        if (!append_format(buffer, buffer_size, &offset, "\"row_count\":%d,",
-                           service_result->profile.row_count)) return 0;
-        if (!append_format(buffer, buffer_size, &offset, "\"access_path\":")) return 0;
+    if (meta->include_profile && service_result && service_result->has_profile) {
+        if (!append_format(buffer, buffer_size, &offset,
+                ",\"profile\":{\"elapsed_ms\":%.3f,\"tree_io\":%d,\"row_count\":%d,\"access_path\":",
+                service_result->profile.elapsed_ms,
+                service_result->profile.tree_io,
+                service_result->profile.row_count)) return 0;
         if (!append_json_escaped(buffer, buffer_size, &offset,
-                                 service_result->profile.access_path)) return 0;
+                service_result->profile.access_path)) return 0;
         if (!append_format(buffer, buffer_size, &offset, "}")) return 0;
     }
 
@@ -481,12 +477,8 @@ int http_serialize_query_response(const ApiResponseMeta *meta,
 }
 
 int http_serialize_health_response(char *buffer, size_t buffer_size) {
-    int written = 0;
-
     if (!buffer || buffer_size < HTTP_RESPONSE_BUFFER_MIN) return 0;
-
-    written = snprintf(buffer, buffer_size,
-                       "{\"ok\":true,\"http_status\":200,\"code\":\"OK\","
-                       "\"message\":\"healthy\"}");
-    return written > 0 && (size_t)written < buffer_size;
+    int n = snprintf(buffer, buffer_size,
+        "{\"ok\":true,\"http_status\":200,\"code\":\"OK\",\"message\":\"healthy\"}");
+    return (n > 0 && (size_t)n < buffer_size) ? 1 : 0;
 }
