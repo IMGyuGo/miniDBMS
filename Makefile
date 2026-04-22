@@ -11,10 +11,11 @@ ENGINE_SRCS = src/input/input.c       \
               src/index/index_manager.c
 
 # ── CLI 빌드 소스 ──────────────────────────────────────────
-SRCS = src/main.c              \
-       $(ENGINE_SRCS)          \
-       src/service/db_service.c   \
-       src/threadpool/threadpool.c \
+SRCS = src/main.c                   \
+       $(ENGINE_SRCS)               \
+       src/http/http_message.c      \
+       src/service/db_service.c     \
+       src/threadpool/threadpool.c  \
        src/server/server.c
 
 TARGET = sqlp
@@ -92,6 +93,9 @@ test_executor: tests/test_executor.c    \
                src/executor/executor.c  \
                src/bptree/bptree.c      \
                src/index/index_manager.c \
+               src/input/input.c        \
+               src/input/lexer.c        \
+               src/parser/parser.c      \
                src/service/db_service.c
 	$(CC) $(CFLAGS) -o $@ $^ -lpthread
 
