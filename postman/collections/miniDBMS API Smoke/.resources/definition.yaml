@@ -1,0 +1,5 @@
+$kind: collection
+description: Minimal Postman collection for miniDBMS server smoke checks.
+variables:
+  base_url: http://127.0.0.1:8080
+  user_id: "5001"

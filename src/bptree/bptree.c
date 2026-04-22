@@ -773,6 +773,6 @@ void bptree_print(BPTree *tree) {
         return;
     }
 
-    printf("[bptree] order=%d height=%d\n", tree->order, tree->height);
+    printf("[bptree] root=%p\n", (void *)tree->root);
     print_node(tree->root, 0);
 }

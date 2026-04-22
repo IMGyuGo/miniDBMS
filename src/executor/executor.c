@@ -719,17 +719,15 @@ int executor_run(const ASTNode *node, const TableSchema *schema) {
 void result_free(ResultSet *rs) {
     if (!rs) return;
 
-    for (int i = 0; i < rs->row_count; i++) {
-        for (int j = 0; j < rs->rows[i].count; j++)
-            free(rs->rows[i].values[j]);
-        free(rs->rows[i].values);
-    }
-
-    free(rs->rows);
-
     for (int i = 0; i < rs->col_count; i++)
         free(rs->col_names[i]);
     free(rs->col_names);
 
+    for (int i = 0; i < rs->row_count; i++) {
+        for (int j = 0; j < rs->col_count; j++)
+            free(rs->rows[i].values[j]);
+        free(rs->rows[i].values);
+    }
+    free(rs->rows);
     free(rs);
 }

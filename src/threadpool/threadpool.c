@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "threadpool.h"
 #include "../../include/db_service.h"
@@ -42,6 +43,21 @@ static void  send_http_response(int fd, int http_status,
  * 판별은 sql 문자열 앞 6자 대소문자 비교로 처리한다.
  * --------------------------------------------------------- */
 static pthread_rwlock_t g_engine_rwlock = PTHREAD_RWLOCK_INITIALIZER;
+
+static int worker_trace_enabled(void) {
+    const char *value = getenv("MINIDBMS_TRACE_WORKERS");
+    return value && value[0] != '\0' && strcmp(value, "0") != 0;
+}
+
+static int worker_delay_ms(void) {
+    const char *value = getenv("MINIDBMS_WORKER_DELAY_MS");
+    if (!value || value[0] == '\0') return 0;
+
+    int delay = atoi(value);
+    if (delay < 0) return 0;
+    if (delay > 5000) return 5000;
+    return delay;
+}
 
 /* ── Threadpool 구조체 ────────────────────────────────────── */
 struct Threadpool {
@@ -171,6 +187,25 @@ static void *worker_loop(void *arg) {
         pthread_mutex_unlock(&tp->mutex);
 
         /* ── 잡 처리 ── */
+        int trace = worker_trace_enabled();
+        int delay_ms = worker_delay_ms();
+        unsigned long worker_id = (unsigned long)pthread_self();
+
+        if (trace) {
+            fprintf(stderr,
+                    "[worker %lu] start request_id=%s sql=\"%.80s\"\n",
+                    worker_id,
+                    job.request_id[0] ? job.request_id : "-",
+                    job.sql);
+        }
+
+        if (delay_ms > 0) {
+            struct timespec delay;
+            delay.tv_sec = delay_ms / 1000;
+            delay.tv_nsec = (long)(delay_ms % 1000) * 1000000L;
+            nanosleep(&delay, NULL);
+        }
+
         DBServiceOptions opts;
         db_service_options_init(&opts);
         /* ApiQueryOptions → DBServiceOptions 매핑 */
@@ -205,6 +240,15 @@ static void *worker_loop(void *arg) {
 
         /* ── HTTP 응답 전송 ── */
         send_http_response(job.conn_fd, meta.http_status, body, strlen(body));
+
+        if (trace) {
+            fprintf(stderr,
+                    "[worker %lu] done  request_id=%s status=%d rows=%d\n",
+                    worker_id,
+                    job.request_id[0] ? job.request_id : "-",
+                    meta.http_status,
+                    meta.row_count);
+        }
 
         db_service_result_free(&result);
         close(job.conn_fd);

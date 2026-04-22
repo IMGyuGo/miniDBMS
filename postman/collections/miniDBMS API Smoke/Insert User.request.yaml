@@ -1,0 +1,25 @@
+$kind: http-request
+url: "{{base_url}}/query"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "sql": "INSERT INTO users VALUES ({{user_id}}, 'postman-user', 27, 'postman-user@example.com');"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status is 200', function () {
+        pm.response.to.have.status(200);
+      });
+      var body = pm.response.json();
+      pm.test('insert succeeded', function () {
+        pm.expect(body.ok).to.eql(true);
+        pm.expect(body.rows_affected).to.eql(1);
+        pm.expect(body.has_payload).to.eql(false);
+      });
+    language: text/javascript
+order: 2000

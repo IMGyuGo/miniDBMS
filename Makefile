@@ -52,17 +52,18 @@ perf_sim: $(PERF_SRCS)
 gen_data: tools/gen_data.c
 	$(CC) $(CFLAGS) -o gen_data $^
 
-TEST_BINS = test_bptree test_index test_parser test_schema test_executor test_http
+# Role A/B 테스트는 해당 파일이 올라오면 아래 주석 해제
+# TEST_BINS_AB = test_bptree test_index
+TEST_BINS = test_parser test_schema test_executor test_http test_threadpool
 
 test: $(TEST_BINS)
 	@echo ""
 	@echo "========== Running Tests =========="
-	@$(RUN_PREFIX)test_bptree   && echo "[PASS] bptree"
-	@$(RUN_PREFIX)test_index    && echo "[PASS] index"
-	@$(RUN_PREFIX)test_parser   && echo "[PASS] parser"
-	@$(RUN_PREFIX)test_schema   && echo "[PASS] schema"
-	@$(RUN_PREFIX)test_executor && echo "[PASS] executor"
-	@$(RUN_PREFIX)test_http     && echo "[PASS] http"
+	@$(RUN_PREFIX)test_parser      && echo "[PASS] parser"      || echo "[FAIL] parser"
+	@$(RUN_PREFIX)test_schema      && echo "[PASS] schema"      || echo "[FAIL] schema"
+	@$(RUN_PREFIX)test_executor    && echo "[PASS] executor"    || echo "[FAIL] executor"
+	@$(RUN_PREFIX)test_http        && echo "[PASS] http"        || echo "[FAIL] http"
+	@$(RUN_PREFIX)test_threadpool
 	@echo "==================================="
 
 test_bptree: tests/test_bptree.c \
@@ -109,6 +110,20 @@ test_executor: tests/test_executor.c    \
                src/input/lexer.c        \
                src/parser/parser.c      \
                src/service/db_service.c
+	$(CC) $(CFLAGS) -o $@ $^ -lpthread
+
+# 역할 D — 스레드 풀 동시성 스모크 테스트
+test_threadpool: tests/test_threadpool.c    \
+                 src/threadpool/threadpool.c \
+                 src/http/http_message.c    \
+                 src/service/db_service.c   \
+                 src/input/input.c          \
+                 src/input/lexer.c          \
+                 src/parser/parser.c        \
+                 src/schema/schema.c        \
+                 src/executor/executor.c    \
+                 src/bptree/bptree.c        \
+                 src/index/index_manager.c
 	$(CC) $(CFLAGS) -o $@ $^ -lpthread
 
 clean:

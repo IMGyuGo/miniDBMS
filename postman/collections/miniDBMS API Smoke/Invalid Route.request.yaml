@@ -1,0 +1,24 @@
+$kind: http-request
+url: "{{base_url}}/unknown"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "sql": "SELECT * FROM users;"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status is 404', function () {
+        pm.response.to.have.status(404);
+      });
+      var body = pm.response.json();
+      pm.test('route error payload is returned', function () {
+        pm.expect(body.ok).to.eql(false);
+        pm.expect(body.code).to.eql('UNSUPPORTED_ROUTE');
+      });
+    language: text/javascript
+order: 5000

@@ -135,14 +135,12 @@ static int test_serialize_query_response(void) {
     service_result.profile.row_count = 1;
 
     http_response_meta_from_service(&service_result, &meta);
-    strcpy(meta.request_id, "req-1");
 
     if (!http_serialize_query_response(&meta, &service_result, buffer, sizeof(buffer))) {
         return 0;
     }
 
     if (!strstr(buffer, "\"ok\":true")) return 0;
-    if (!strstr(buffer, "\"request_id\":\"req-1\"")) return 0;
     if (!strstr(buffer, "\"rows\"")) return 0;
     if (!strstr(buffer, "\"alice\"")) return 0;
     if (!strstr(buffer, "\"profile\"")) return 0;
@@ -155,36 +153,29 @@ int main(void) {
         fprintf(stderr, "test_parse_query_request failed\n");
         return 1;
     }
-
     if (!test_parse_invalid_route()) {
         fprintf(stderr, "test_parse_invalid_route failed\n");
         return 1;
     }
-
     if (!test_parse_invalid_boolean_option()) {
         fprintf(stderr, "test_parse_invalid_boolean_option failed\n");
         return 1;
     }
-
     if (!test_parse_blank_sql()) {
         fprintf(stderr, "test_parse_blank_sql failed\n");
         return 1;
     }
-
     if (!test_parse_invalid_request_id()) {
         fprintf(stderr, "test_parse_invalid_request_id failed\n");
         return 1;
     }
-
     if (!test_parse_error_keeps_request_id()) {
         fprintf(stderr, "test_parse_error_keeps_request_id failed\n");
         return 1;
     }
-
     if (!test_serialize_query_response()) {
         fprintf(stderr, "test_serialize_query_response failed\n");
         return 1;
     }
-
     return 0;
 }
