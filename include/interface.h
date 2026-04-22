@@ -137,67 +137,77 @@ ASTNode *parser_parse(TokenList *tokens);  /* heap AST, parser_free()가 중첩 
 void     parser_free(ASTNode *node);
 
 /* =========================================================
- * Role C -> Role D : 스키마
- * schema/{table}.schema 를 메모리 계약으로 올린 결과다.
+ * Role C -> Role D : 스키마 계층
+ * SQL 엔진 도메인 계약. transport 정보는 넣지 않는다.
  * ========================================================= */
 typedef enum {
-    COL_INT,
+    COL_INT = 0,
     COL_VARCHAR,
-    COL_BOOLEAN  /* 허용값: "T" / "F" */
+    COL_BOOLEAN
 } ColType;
 
 typedef struct {
     char    name[64];
     ColType type;
-    int     max_len;    /* VARCHAR 전용, INT 는 0 */
+    int     max_len;   /* VARCHAR 최대 길이, 다른 타입은 0 */
 } ColDef;
 
+/*
+ * TableSchema: heap object.
+ * columns 는 heap 배열이며 schema_free()가 해제한다.
+ */
 typedef struct {
     char    table_name[64];
-    ColDef *columns;   /* heap array, schema_free()가 해제 */
+    ColDef *columns;       /* heap array, schema_free()가 해제 */
     int     column_count;
 } TableSchema;
 
 /* Role C 구현 — 호출자가 free 책임 */
-TableSchema *schema_load(const char *table_name); /* heap schema, schema_free() */
-int          schema_validate(const ASTNode *node,
-                             const TableSchema *schema);
+TableSchema *schema_load(const char *table_name);
+int          schema_validate(const ASTNode *node, const TableSchema *schema);
 void         schema_free(TableSchema *schema);
 
 /* =========================================================
- * Role D : 실행 결과
- * SQL 엔진의 표 형태 결과다.
- * HTTP 응답 JSON 포맷은 include/api_contract.h 에서 별도 정의한다.
- * 이 구조체 자체는 transport 메타데이터를 들고 있지 않는다.
+ * Role D -> Role C : SELECT/INSERT 실행 결과
+ * result_free()가 ResultSet 전체를 해제한다.
  * ========================================================= */
+
+/* Row: ResultSet 안에서 관리하는 한 행. */
 typedef struct {
-    char **values; /* heap array, result_free()가 원소와 함께 해제 */
-    int    count;
+    char **values;  /* heap array, count 개의 NUL-terminated 문자열 */
+    int    count;   /* ResultSet.col_count 와 동일 */
 } Row;
 
+/*
+ * ResultSet: SELECT 결과 전체를 담는 heap object.
+ * db_select 계열 함수가 반환하며, result_free()로 해제한다.
+ */
 typedef struct {
-    char **col_names; /* heap array, result_free()가 원소와 함께 해제 */
+    char **col_names;  /* heap array, col_count 개의 컬럼명 문자열 */
     int    col_count;
-    Row   *rows;      /* heap array, result_free()가 해제 */
+    Row   *rows;       /* heap array, row_count 개의 Row */
     int    row_count;
 } ResultSet;
 
-/* Role D 구현 — 호출자가 free 책임 */
-int        executor_run(const ASTNode *node, const TableSchema *schema);
-ResultSet *db_select(const SelectStmt *stmt, const TableSchema *schema); /* result_free() */
-int        db_insert(const InsertStmt *stmt, const TableSchema *schema);
-void       result_free(ResultSet *rs);
-
 /* =========================================================
- * API 서버 확장 시 추가 규약
- *
- * 1. 새 요청/응답 직렬화 포맷이 필요하면 include/api_contract.h 에 추가한다.
- * 2. 엔진 호출 진입점이 필요하면 include/db_service.h 에 추가한다.
- * 3. 이 파일에 새 필드를 넣을 때는 아래 질문을 먼저 확인한다.
- *    - 이 값이 SQL 엔진 의미 자체에 필요한가?
- *    - transport/runtime 이 아니라 parser/schema/executor 공통 의미인가?
- *    - free 책임과 스레드 공유 방식이 명확한가?
- * 4. 위 질문에 하나라도 "아니오"면 이 파일이 아니라 다른 계층 헤더로 분리한다.
+ * Role D 구현 — executor 공개 API
  * ========================================================= */
 
+/* 일반 SELECT 진입점 (emit_log=1) */
+ResultSet *db_select(const SelectStmt *stmt, const TableSchema *schema);
+
+/* 벤치마크용 조용한 SELECT (emit_log=0) */
+ResultSet *db_select_bench(const SelectStmt *stmt, const TableSchema *schema,
+                           int force_linear);
+
+/* INSERT 실행: 성공 SQL_OK, 실패 SQL_ERR */
+int db_insert(const InsertStmt *stmt, const TableSchema *schema);
+
+/* AST 타입 기반 디스패처 (기존 인터페이스 호환) */
+int executor_run(const ASTNode *node, const TableSchema *schema);
+
+/* ResultSet 전체 해제 */
+void result_free(ResultSet *rs);
+
 #endif /* INTERFACE_H */
+
