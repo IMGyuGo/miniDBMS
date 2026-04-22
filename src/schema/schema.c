@@ -1,7 +1,7 @@
 /* =========================================================
  * schema.c — 스키마 로딩 + 검증
  *
- * 담당자 : 김규민 (역할 C)
+ * 역할   : C
  * 금지   : 다른 팀원은 이 파일을 수정하지 않는다.
  *
  * 변경 이력:
@@ -290,7 +290,7 @@ int schema_validate(const ASTNode *node, const TableSchema *schema) {
                 return SQL_ERR;
             }
 
-            /* WHERE_BETWEEN 추가 검증 (김규민) */
+            /* WHERE_BETWEEN additional validation */
             if (sel->where.type == WHERE_BETWEEN) {
                 /*
                  * 현재 프로젝트 규칙:

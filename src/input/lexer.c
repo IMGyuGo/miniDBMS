@@ -1,7 +1,7 @@
 /* =========================================================
  * lexer.c — SQL 토크나이저
  *
- * 담당자 : 김규민 (역할 C)
+ * 역할   : C
  * 금지   : 다른 팀원은 이 파일을 수정하지 않는다.
  *
  * 변경 이력:
@@ -26,8 +26,8 @@ static struct
     {"FROM", TOKEN_FROM},
     {"WHERE", TOKEN_WHERE},
     {"VALUES", TOKEN_VALUES},
-    {"BETWEEN", TOKEN_BETWEEN}, /* 김규민 추가 */
-    {"AND", TOKEN_AND},         /* 김규민 추가 — BETWEEN ~ AND ~ 에서 사용 */
+    {"BETWEEN", TOKEN_BETWEEN}, /* BETWEEN support */
+    {"AND", TOKEN_AND},         /* used with BETWEEN ... AND ... */
     {NULL, TOKEN_EOF}};
 
 /*

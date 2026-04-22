@@ -64,26 +64,26 @@ test: $(TEST_BINS)
 	@./test_http     && echo "[PASS] http"     || echo "[FAIL] http"
 	@echo "==================================="
 
-# 역할 A (김용) — B+ Tree 단위 테스트
+# 역할 A — B+ Tree 단위 테스트
 test_bptree: tests/test_bptree.c \
              src/bptree/bptree.c
 	$(CC) $(CFLAGS) -o $@ $^
 
-# 역할 B (김은재) — 인덱스 매니저 단위 테스트
+# 역할 B — 인덱스 매니저 단위 테스트
 test_index: tests/test_index.c   \
             src/bptree/bptree.c  \
             src/index/index_manager.c \
             src/schema/schema.c
 	$(CC) $(CFLAGS) -o $@ $^
 
-# 역할 C (김규민) — 파서 단위 테스트
+# 역할 C — 파서 단위 테스트
 test_parser: tests/test_parser.c  \
              src/input/input.c    \
              src/input/lexer.c    \
              src/parser/parser.c
 	$(CC) $(CFLAGS) -o $@ $^
 
-# 역할 C (김규민) — 스키마 단위 테스트
+# 역할 C — 스키마 단위 테스트
 test_schema: tests/test_schema.c \
              src/schema/schema.c  \
              src/input/input.c    \
@@ -91,7 +91,7 @@ test_schema: tests/test_schema.c \
              src/parser/parser.c
 	$(CC) $(CFLAGS) -o $@ $^
 
-# 역할 C (김규민) — HTTP 메시지 단위 테스트
+# 역할 C — HTTP 메시지 단위 테스트
 test_http: tests/test_http.c         \
            src/http/http_message.c   \
            src/input/input.c         \
@@ -104,7 +104,7 @@ test_http: tests/test_http.c         \
            src/service/db_service.c
 	$(CC) $(CFLAGS) -o $@ $^ -lpthread
 
-# 역할 D (김원우) — Executor 단위 테스트
+# 역할 D — Executor 단위 테스트
 test_executor: tests/test_executor.c    \
                src/schema/schema.c      \
                src/executor/executor.c  \
