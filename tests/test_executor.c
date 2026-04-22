@@ -310,6 +310,18 @@ static void test_service_execute(void) {
     st = db_service_execute_sql("", &opts, &res);
     CHECK(st == DB_SERVICE_BAD_REQUEST, "empty SQL → BAD_REQUEST");
     db_service_result_free(&res);
+
+    /* compare 옵션은 현재 명시적으로 미지원 */
+    db_service_result_init(&res);
+    db_service_options_init(&opts);
+    opts.compare = 1;
+    st = db_service_execute_sql(
+        "SELECT * FROM " TEST_TABLE " WHERE id = 1;",
+        &opts, &res);
+    CHECK(st == DB_SERVICE_UNSUPPORTED, "compare ??UNSUPPORTED");
+    CHECK(strcmp(res.message, "compare option not supported yet") == 0,
+          "compare 미지원 메시지 확인");
+    db_service_result_free(&res);
 }
 
 static void test_null_safety(void) {

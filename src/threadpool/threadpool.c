@@ -196,6 +196,7 @@ static void *worker_loop(void *arg) {
         /* ── Role C: DBServiceResult → ApiResponseMeta 변환 ── */
         ApiResponseMeta meta;
         http_response_meta_from_service(&result, &meta);
+        strncpy(meta.request_id, job.request_id, sizeof(meta.request_id) - 1);
 
         /* ── Role C: JSON 직렬화 ── */
         char body[65536];

@@ -42,19 +42,32 @@ static void set_error_meta(ApiResponseMeta *meta,
                            int http_status,
                            ApiCode code,
                            const char *message) {
+    char request_id[API_REQUEST_ID_MAX];
+
     if (!meta) return;
 
+    copy_text(request_id, sizeof(request_id), meta->request_id);
     memset(meta, 0, sizeof(*meta));
     meta->http_status = http_status;
     meta->code = code;
     meta->ok = 0;
     meta->has_payload = 0;
+    copy_text(meta->request_id, sizeof(meta->request_id), request_id);
     copy_text(meta->error, sizeof(meta->error), message);
+}
+
+static void set_meta_request_id(ApiResponseMeta *meta, const char *request_id) {
+    if (!meta) return;
+    copy_text(meta->request_id, sizeof(meta->request_id), request_id);
 }
 
 static const char *skip_ws(const char *p) {
     while (p && *p && isspace((unsigned char)*p)) p++;
     return p;
+}
+
+static int is_json_delimiter(char ch) {
+    return ch == '\0' || ch == ',' || ch == '}' || isspace((unsigned char)ch);
 }
 
 static const char *find_json_key(const char *body, const char *key) {
@@ -72,6 +85,10 @@ static const char *find_json_key(const char *body, const char *key) {
     if (!colon) return NULL;
 
     return skip_ws(colon + 1);
+}
+
+static int json_key_exists(const char *body, const char *key) {
+    return find_json_key(body, key) != NULL;
 }
 
 static int parse_json_string_field(const char *body,
@@ -114,24 +131,37 @@ static int parse_json_bool_field(const char *body, const char *key, int *out) {
 
     if (!p || !out) return 0;
 
-    if (strncmp(p, "true", 4) == 0) {
+    if (strncmp(p, "true", 4) == 0 && is_json_delimiter(p[4])) {
         *out = 1;
         return 1;
     }
-    if (strncmp(p, "false", 5) == 0) {
+    if (strncmp(p, "false", 5) == 0 && is_json_delimiter(p[5])) {
         *out = 0;
         return 1;
     }
-    if (*p == '1') {
+    if (*p == '1' && is_json_delimiter(p[1])) {
         *out = 1;
         return 1;
     }
-    if (*p == '0') {
+    if (*p == '0' && is_json_delimiter(p[1])) {
         *out = 0;
         return 1;
     }
 
     return 0;
+}
+
+static int is_blank_text(const char *text) {
+    const unsigned char *p = (const unsigned char *)text;
+
+    if (!p) return 1;
+
+    while (*p) {
+        if (!isspace(*p)) return 0;
+        p++;
+    }
+
+    return 1;
 }
 
 static ApiMethod parse_method(const char *method) {
@@ -330,23 +360,45 @@ int http_parse_query_request(const char *method,
         return 0;
     }
 
-    if (out->sql[0] == '\0') {
+    if (is_blank_text(out->sql)) {
         set_error_meta(error_meta, 400, API_CODE_BAD_REQUEST, "empty sql field");
         return 0;
     }
 
-    if (parse_json_string_field(body, "request_id",
-                                out->request_id, sizeof(out->request_id)) == 0) {
+    if (json_key_exists(body, "request_id")) {
+        if (!parse_json_string_field(body, "request_id",
+                                     out->request_id, sizeof(out->request_id))) {
+            set_error_meta(error_meta, 400, API_CODE_BAD_REQUEST,
+                           "invalid request_id field");
+            return 0;
+        }
+        set_meta_request_id(error_meta, out->request_id);
+    } else {
         out->request_id[0] = '\0';
     }
 
     parsed_bool = parse_json_bool_field(body, "force_linear", &out->options.force_linear);
+    if (!parsed_bool && json_key_exists(body, "force_linear")) {
+        set_error_meta(error_meta, 400, API_CODE_BAD_REQUEST,
+                       "invalid force_linear field");
+        return 0;
+    }
     if (!parsed_bool) out->options.force_linear = 0;
 
     parsed_bool = parse_json_bool_field(body, "compare", &out->options.compare);
+    if (!parsed_bool && json_key_exists(body, "compare")) {
+        set_error_meta(error_meta, 400, API_CODE_BAD_REQUEST,
+                       "invalid compare field");
+        return 0;
+    }
     if (!parsed_bool) out->options.compare = 0;
 
     parsed_bool = parse_json_bool_field(body, "include_profile", &out->options.include_profile);
+    if (!parsed_bool && json_key_exists(body, "include_profile")) {
+        set_error_meta(error_meta, 400, API_CODE_BAD_REQUEST,
+                       "invalid include_profile field");
+        return 0;
+    }
     if (!parsed_bool) out->options.include_profile = 0;
 
     init_success_meta(error_meta);
@@ -395,6 +447,10 @@ int http_serialize_query_response(const ApiResponseMeta *meta,
     if (!append_format(buffer, buffer_size, &offset, "\"http_status\":%d,", meta->http_status)) return 0;
     if (!append_format(buffer, buffer_size, &offset, "\"code\":")) return 0;
     if (!append_json_escaped(buffer, buffer_size, &offset, api_code_name(meta->code))) return 0;
+    if (meta->request_id[0] != '\0') {
+        if (!append_format(buffer, buffer_size, &offset, ",\"request_id\":")) return 0;
+        if (!append_json_escaped(buffer, buffer_size, &offset, meta->request_id)) return 0;
+    }
     if (!append_format(buffer, buffer_size, &offset, ",\"row_count\":%d,", meta->row_count)) return 0;
     if (!append_format(buffer, buffer_size, &offset, "\"rows_affected\":%d,", meta->rows_affected)) return 0;
     if (!append_format(buffer, buffer_size, &offset, "\"has_payload\":%s,",
