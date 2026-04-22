@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 520" width="720" height="520" font-family="'Segoe UI', Arial, sans-serif">
+  <!-- Background -->
+  <rect width="720" height="520" fill="#0f1117" rx="12"/>
+
+  <!-- Title -->
+  <text x="360" y="36" text-anchor="middle" font-size="17" font-weight="bold" fill="#e2e8f0" letter-spacing="1">miniDBMS — 아키텍처</text>
+
+  <!-- ── Client ── -->
+  <rect x="270" y="60" width="180" height="48" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="360" y="80" text-anchor="middle" font-size="13" fill="#38bdf8" font-weight="bold">Client</text>
+  <text x="360" y="97" text-anchor="middle" font-size="11" fill="#94a3b8">curl / Postman / HTTP</text>
+
+  <!-- Arrow down -->
+  <line x1="360" y1="108" x2="360" y2="132" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="360,138 355,128 365,128" fill="#64748b"/>
+
+  <!-- ── HTTP Server ── -->
+  <rect x="230" y="140" width="260" height="48" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="360" y="160" text-anchor="middle" font-size="13" fill="#a78bfa" font-weight="bold">HTTP Server</text>
+  <text x="360" y="177" text-anchor="middle" font-size="11" fill="#94a3b8">소켓 수락 · 요청 파싱 · 응답 전송</text>
+
+  <!-- Arrow down -->
+  <line x1="360" y1="188" x2="360" y2="212" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="360,218 355,208 365,208" fill="#64748b"/>
+
+  <!-- ── Thread Pool ── -->
+  <rect x="170" y="220" width="380" height="72" rx="8" fill="#1e293b" stroke="#34d399" stroke-width="1.5"/>
+  <text x="360" y="242" text-anchor="middle" font-size="13" fill="#34d399" font-weight="bold">Thread Pool</text>
+  <text x="360" y="260" text-anchor="middle" font-size="11" fill="#94a3b8">워커 스레드 4개  ·  링버퍼 잡 큐</text>
+  <!-- worker icons -->
+  <rect x="195" y="268" width="52" height="16" rx="3" fill="#064e3b" stroke="#34d399" stroke-width="1"/>
+  <text x="221" y="280" text-anchor="middle" font-size="10" fill="#34d399">worker 1</text>
+  <rect x="257" y="268" width="52" height="16" rx="3" fill="#064e3b" stroke="#34d399" stroke-width="1"/>
+  <text x="283" y="280" text-anchor="middle" font-size="10" fill="#34d399">worker 2</text>
+  <rect x="319" y="268" width="52" height="16" rx="3" fill="#064e3b" stroke="#34d399" stroke-width="1"/>
+  <text x="345" y="280" text-anchor="middle" font-size="10" fill="#34d399">worker 3</text>
+  <rect x="381" y="268" width="52" height="16" rx="3" fill="#064e3b" stroke="#34d399" stroke-width="1"/>
+  <text x="407" y="280" text-anchor="middle" font-size="10" fill="#34d399">worker 4</text>
+
+  <!-- Arrow down -->
+  <line x1="360" y1="292" x2="360" y2="316" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="360,322 355,312 365,312" fill="#64748b"/>
+
+  <!-- ── DB Engine ── -->
+  <rect x="140" y="324" width="440" height="52" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="360" y="345" text-anchor="middle" font-size="13" fill="#f59e0b" font-weight="bold">DB Engine</text>
+  <text x="360" y="364" text-anchor="middle" font-size="11" fill="#94a3b8">Lexer → Parser → Schema → Executor  ·  단일 진입점: db_service_execute_sql()</text>
+
+  <!-- Two branches from DB Engine -->
+  <!-- left branch: Index Manager + B+Tree -->
+  <line x1="260" y1="376" x2="200" y2="408" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="196,413 196,402 206,408" fill="#64748b"/>
+  <!-- right branch: Linear Scan -->
+  <line x1="460" y1="376" x2="520" y2="408" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="524,413 514,408 524,402" fill="#64748b"/>
+
+  <!-- ── Index Manager / B+Tree ── -->
+  <rect x="80" y="414" width="240" height="56" rx="8" fill="#1e293b" stroke="#fb7185" stroke-width="1.5"/>
+  <text x="200" y="434" text-anchor="middle" font-size="12" fill="#fb7185" font-weight="bold">Index Manager → B+Tree</text>
+  <text x="200" y="452" text-anchor="middle" font-size="11" fill="#94a3b8">id / age 기준 인덱스</text>
+  <text x="200" y="466" text-anchor="middle" font-size="10" fill="#64748b">data/{table}.dat</text>
+
+  <!-- ── Linear Scan ── -->
+  <rect x="400" y="414" width="240" height="56" rx="8" fill="#1e293b" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="520" y="434" text-anchor="middle" font-size="12" fill="#94a3b8" font-weight="bold">Linear Scan</text>
+  <text x="520" y="452" text-anchor="middle" font-size="11" fill="#94a3b8">파일 전체 순차 탐색</text>
+  <text x="520" y="466" text-anchor="middle" font-size="10" fill="#64748b">인덱스 조건 미해당 시</text>
+
+  <!-- Legend labels on arrows -->
+  <text x="390" y="128" font-size="10" fill="#64748b">HTTP 요청</text>
+  <text x="390" y="208" font-size="10" fill="#64748b">잡 제출</text>
+  <text x="390" y="310" font-size="10" fill="#64748b">SQL 실행</text>
+
+  <!-- rwlock badge -->
+  <rect x="326" y="298" width="68" height="18" rx="4" fill="#292524" stroke="#f59e0b" stroke-width="1"/>
+  <text x="360" y="311" text-anchor="middle" font-size="10" fill="#f59e0b">rwlock (r/w)</text>
+</svg>
