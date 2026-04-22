@@ -53,6 +53,18 @@ static void sigint_handler(int sig);
 /* ── 공개 API ─────────────────────────────────────────────── */
 
 int server_run(int port, int num_threads) {
+    /*
+     * 서버 시작 흐름:
+     *   main() -> server_run() -> socket/bind/listen -> accept loop
+     *
+     * 요청 1개 처리 흐름:
+     *   accept
+     *   -> raw HTTP 읽기
+     *   -> method/path/body 분리
+     *   -> http_parse_query_request() 로 JSON body 해석
+     *   -> /health 는 즉시 응답
+     *   -> /query 는 ThreadpoolJob 으로 바꿔 worker 에게 위임
+     */
     signal(SIGINT,  sigint_handler);
     signal(SIGTERM, sigint_handler);
     signal(SIGPIPE, SIG_IGN);
@@ -132,6 +144,11 @@ int server_run(int port, int num_threads) {
             continue;
         }
 
+        /*
+         * 여기의 body 는 아직 raw JSON 문자열이다.
+         * 예:
+         *   {"sql":"SELECT * FROM users WHERE id = 1;","include_profile":true}
+         */
         const char *body = (body_offset >= 0) ? (raw + body_offset) : "";
 
         /* ── Role C: method/path/body → ApiQueryRequest ── */
@@ -139,6 +156,13 @@ int server_run(int port, int num_threads) {
         ApiResponseMeta  parse_err;
         int ok = http_parse_query_request(method, path, body,
                                           &req, &parse_err);
+
+        /*
+         * 성공 후 req 안에는 이미 파싱된 값이 들어 있다.
+         *   req.sql        : 실행할 SQL 문자열
+         *   req.options    : force_linear / compare / include_profile
+         *   req.request_id : 요청 추적용 문자열
+         */
 
         if (!ok) {
             /* 파싱 실패: Role C 가 채운 error_meta 로 즉시 응답 */
@@ -163,6 +187,10 @@ int server_run(int port, int num_threads) {
         ThreadpoolJob job;
         memset(&job, 0, sizeof(job));
         job.conn_fd = conn_fd;
+        /*
+         * 여기서 "파싱된 API 요청"이 "worker 가 실행할 job" 으로 바뀐다.
+         * worker 는 더 이상 JSON 을 보지 않고 job.sql / job.options 만 사용한다.
+         */
         strncpy(job.sql, req.sql, sizeof(job.sql) - 1);
         job.options = req.options;   /* ApiQueryOptions 그대로 복사 */
         strncpy(job.request_id, req.request_id, sizeof(job.request_id) - 1);
@@ -211,6 +239,10 @@ static int read_http_request(int fd, char *buf, size_t buf_size,
     size_t total      = 0;
     int    header_end = -1;
 
+    /*
+     * 먼저 헤더 끝(\r\n\r\n)까지 읽는다.
+     * 헤더를 다 읽은 뒤에는 Content-Length 만큼 body 를 추가로 읽는다.
+     */
     while (total < buf_size - 1) {
         ssize_t n = read(fd, buf + total, 1);
         if (n <= 0) break;
@@ -252,6 +284,12 @@ static int read_http_request(int fd, char *buf, size_t buf_size,
 static int parse_request_line(const char *buf,
                               char *method, size_t mlen,
                               char *path,   size_t plen) {
+    /*
+     * 예:
+     *   "POST /query HTTP/1.1\r\n..."
+     *    -> method = "POST"
+     *    -> path   = "/query"
+     */
     const char *p  = buf;
     const char *sp = strchr(p, ' ');
     if (!sp) return -1;
@@ -296,6 +334,7 @@ static void send_response(int fd, int http_status, const char *body) {
     if (!body) body = "";
     size_t body_len = strlen(body);
 
+    /* JSON body 앞에 최소한의 HTTP/1.1 header 를 붙여서 클라이언트로 보낸다. */
     const char *status_str =
         (http_status == 200) ? "OK" :
         (http_status == 400) ? "Bad Request" :
