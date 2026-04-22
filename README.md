@@ -68,23 +68,12 @@ make test                   # 단위 테스트 전체 실행
 ./test_threadpool 64        # 스레드 풀 병렬성 테스트
 ```
 
+## 동시성 read, write 병렬 작업 테스트
+![alt text](병렬작업테스트.png)
+
+- INSERT 작업의 경우 worker 쓰레드가 하나의 작업을 끝내고 다음 작업으로 순차적으로 진행
+- SELECT 작업의 경우 worker 쓰레드가 병렬적으로 작업을 시작하는 것을 확인 가능
 ---
-
-## 성능 비교
-
-### 스레드 풀 speedup
-
-```bash
-./test_threadpool 64
-```
-
-```
-workers  elapsed(ms)  speedup
--------  -----------  -------
-1                480   1.00x
-2                245   1.96x
-4                125   3.84x
-```
 
 ### B+Tree vs 선형 탐색
 
