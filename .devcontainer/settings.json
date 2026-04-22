@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/lint.sh 2>&1; echo '--- test ---'; gcc -std=c99 -Wall -Iinclude -o test_executor tests/test_executor.c src/schema/schema.c src/executor/executor.c 2>&1 && ./test_executor 2>&1 | tail -10"
+          }
+        ]
+      }
+    ]
+  }
+}
