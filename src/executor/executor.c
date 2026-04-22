@@ -608,13 +608,24 @@ int db_insert(const InsertStmt *stmt, const TableSchema *schema) {
     char path[256];
     snprintf(path, sizeof(path), "data/%s.dat", stmt->table);
 
-    FILE *fp = fopen(path, "ab");
+    FILE *fp = fopen(path, "ab+");
     if (!fp) {
         fprintf(stderr, "executor: cannot open '%s'\n", path);
         return SQL_ERR;
     }
 
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fclose(fp);
+        fprintf(stderr, "executor: cannot seek '%s'\n", path);
+        return SQL_ERR;
+    }
+
     long offset = ftell(fp);
+    if (offset < 0) {
+        fclose(fp);
+        fprintf(stderr, "executor: cannot tell offset for '%s'\n", path);
+        return SQL_ERR;
+    }
 
     /* 컬럼 목록이 없으면 입력 값 순서가 이미 스키마 순서라고 본다. */
     if (stmt->column_count == 0) {

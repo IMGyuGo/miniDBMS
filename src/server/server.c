@@ -1,3 +1,4 @@
+#ifndef _WIN32
 /* =========================================================
  * server.c — TCP accept loop + 요청 디스패치
  *
@@ -188,8 +189,8 @@ int server_run(int port, int num_threads) {
     close(g_server_fd);
     g_server_fd = -1;
 
-    index_cleanup();
     threadpool_destroy(tp);
+    index_cleanup();
 
     fprintf(stderr, "[server] stopped.\n");
     return 0;
@@ -322,3 +323,17 @@ static void sigint_handler(int sig) {
         g_server_fd = -1;
     }
 }
+#else
+#include <stdio.h>
+
+#include "server.h"
+
+int server_run(int port, int num_threads) {
+    (void)port;
+    (void)num_threads;
+
+    fprintf(stderr,
+            "[server] --server mode is not supported in this Windows build yet.\n");
+    return -1;
+}
+#endif
