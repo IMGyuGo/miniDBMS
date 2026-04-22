@@ -71,6 +71,17 @@ struct BPTree {
 static FILE *g_sim_file = NULL;
 static long  g_sim_page_cursor = 0;
 static int   g_sim_ready = 0;
+static int   g_sim_cleanup_registered = 0;
+
+static void sim_cleanup(void) {
+    if (g_sim_file) {
+        fclose(g_sim_file);
+        g_sim_file = NULL;
+    }
+
+    g_sim_page_cursor = 0;
+    g_sim_ready = 0;
+}
 
 /*
  * sim 모드에서 재사용할 임시 파일을 한 번만 준비한다.
@@ -83,6 +94,11 @@ static int sim_ensure_file(void) {
     g_sim_ready = 1;
     g_sim_file = tmpfile();
     if (!g_sim_file) return 0;
+
+    if (!g_sim_cleanup_registered) {
+        atexit(sim_cleanup);
+        g_sim_cleanup_registered = 1;
+    }
 
     unsigned char page[IO_PAGE_SIZE];
     memset(page, 0xA5, sizeof(page));
@@ -152,11 +168,25 @@ static void valuelist_destroy(BPValueList *list) {
     free(list);
 }
 
+/* 같은 offset이 이미 존재하는지 확인한다. */
+static int valuelist_contains(const BPValueList *list, long offset) {
+    if (!list) return 0;
+
+    for (int i = 0; i < list->count; i++) {
+        if (list->offsets[i] == offset)
+            return 1;
+    }
+
+    return 0;
+}
+
 /* 같은 키 내부에서는 offset 오름차순이 유지되도록 삽입한다. */
 static int valuelist_insert_sorted(BPValueList *list, long offset) {
     int insert_at = 0;
 
     if (!list) return -1;
+    if (valuelist_contains(list, offset))
+        return 0;
 
     while (insert_at < list->count && list->offsets[insert_at] <= offset)
         insert_at++;
