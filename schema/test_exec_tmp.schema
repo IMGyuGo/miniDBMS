@@ -1,0 +1,5 @@
+table=test_exec_tmp
+columns=3
+col0=id,INT,0
+col1=name,VARCHAR,64
+col2=age,INT,0

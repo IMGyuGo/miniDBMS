@@ -1,5 +1,3 @@
-#include <ctype.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,30 +6,17 @@
 #include "../../include/index_manager.h"
 #include "../../include/bptree.h"
 
-#if defined(_MSC_VER)
-#  define IDX_THREAD_LOCAL __declspec(thread)
-#elif defined(__GNUC__)
-#  define IDX_THREAD_LOCAL __thread
-#else
-#  define IDX_THREAD_LOCAL
-#endif
-
 typedef struct {
     char    table[64];
     BPTree *tree_id;
     BPTree *tree_age;
     int     initialized;
+    int     last_io_id;
+    int     last_io_age;
 } TableIndex;
-
-typedef struct {
-    char table[64];
-    int  last_io_id;
-    int  last_io_age;
-} ThreadIOStats;
 
 static TableIndex g_tables[IDX_MAX_TABLES];
 static int        g_count = 0;
-static IDX_THREAD_LOCAL ThreadIOStats g_thread_io_stats;
 
 static TableIndex *find_entry(const char *table) {
     for (int i = 0; i < g_count; i++) {
@@ -62,68 +47,10 @@ static int col_value(const char *line, int n, char *buf, int buf_size) {
     return 1;
 }
 
-static void io_stats_bind_table(const char *table) {
-    if (!table) {
-        g_thread_io_stats.table[0] = '\0';
-        return;
-    }
-
-    strncpy(g_thread_io_stats.table, table, sizeof(g_thread_io_stats.table) - 1);
-    g_thread_io_stats.table[sizeof(g_thread_io_stats.table) - 1] = '\0';
-}
-
-static int io_stats_match_table(const char *table) {
-    if (!table || g_thread_io_stats.table[0] == '\0')
-        return 0;
-    return strcmp(g_thread_io_stats.table, table) == 0;
-}
-
-static void io_stats_reset(const char *table) {
-    io_stats_bind_table(table);
-    g_thread_io_stats.last_io_id = 0;
-    g_thread_io_stats.last_io_age = 0;
-}
-
-static void io_stats_set_id(const char *table, int io_count) {
-    if (!io_stats_match_table(table))
-        io_stats_reset(table);
-
-    g_thread_io_stats.last_io_id = io_count;
-}
-
-static void io_stats_set_age(const char *table, int io_count) {
-    if (!io_stats_match_table(table))
-        io_stats_reset(table);
-
-    g_thread_io_stats.last_io_age = io_count;
-}
-
-static int parse_int_field(const char *text, int *out) {
-    char *end = NULL;
-    long value = 0;
-
-    if (!text || !out) return 0;
-
-    while (*text && isspace((unsigned char)*text))
-        text++;
-    if (*text == '\0') return 0;
-
-    value = strtol(text, &end, 10);
-    if (end == text) return 0;
-
-    while (*end && isspace((unsigned char)*end))
-        end++;
-    if (*end != '\0') return 0;
-    if (value < INT_MIN || value > INT_MAX) return 0;
-
-    *out = (int)value;
-    return 1;
-}
-
 int index_init(const char *table, int order_id, int order_age) {
-    if (!table) return -1;
+    if (!table || g_count >= IDX_MAX_TABLES) return -1;
+
     if (find_entry(table)) return 0;
-    if (g_count >= IDX_MAX_TABLES) return -1;
 
     TableIndex *ti = &g_tables[g_count];
     memset(ti, 0, sizeof(*ti));
@@ -159,7 +86,6 @@ int index_init(const char *table, int order_id, int order_age) {
     char line[1024];
     char col_buf[64];
     int inserted = 0;
-    int skipped = 0;
 
     // 파일을 끝까지 한 줄씩 읽는 무한루프
     while (1) {
@@ -177,19 +103,11 @@ int index_init(const char *table, int order_id, int order_age) {
 
         // 4-1. id 파싱
         if (!col_value(line, 0, col_buf, sizeof(col_buf))) continue;
-        int id = 0;
-        if (!parse_int_field(col_buf, &id)) {
-            skipped++;
-            continue;
-        }
+        int id = atoi(col_buf);
 
         // 4-2. age 파싱
         if (!col_value(line, 2, col_buf, sizeof(col_buf))) continue;
-        int age = 0;
-        if (!parse_int_field(col_buf, &age)) {
-            skipped++;
-            continue;
-        }
+        int age = atoi(col_buf);
 
         // 5. bptree_insert()로 두 트리에 삽입
         bptree_insert(ti->tree_id, id, offset);
@@ -201,9 +119,9 @@ int index_init(const char *table, int order_id, int order_age) {
     fclose(fp);
 
     fprintf(stderr,
-            "[index] '%s' \uCD08\uAE30\uD654 \uC644\uB8CC - %d\uD589 \uB85C\uB4DC, %d\uD589 "
-            "\uC2A4\uD0B5 (order_id=%d, order_age=%d)\n",
-            table, inserted, skipped, oid, oage);
+            "[index] '%s' \uCD08\uAE30\uD654 \uC644\uB8CC - %d\uD589 \uB85C\uB4DC "
+            "(order_id=%d, order_age=%d)\n",
+            table, inserted, oid, oage);
 
     ti->initialized = 1;
     return 0;
@@ -234,13 +152,10 @@ int index_insert_id(const char *table, int id, long offset) {
  * 없으면 -1. executor가 반환받은 offset으로 fseek()한다. */
 long index_search_id(const char *table, int id) {
     TableIndex *ti = find_entry(table);
-    if (!ti) {
-        io_stats_set_id(table, 0);
-        return -1;
-    }
+    if (!ti) return -1;
 
     long offset = bptree_search(ti->tree_id, id);
-    io_stats_set_id(table, bptree_last_io(ti->tree_id));
+    ti->last_io_id = bptree_last_io(ti->tree_id);
     return offset;
 }
 
@@ -248,13 +163,10 @@ long *index_range_id_alloc(const char *table, int from, int to,
                            int *out_count) {
     TableIndex *ti = find_entry(table);
     if (out_count) *out_count = 0;
-    if (!ti || !out_count) {
-        io_stats_set_id(table, 0);
-        return NULL;
-    }
+    if (!ti || !out_count) return NULL;
 
     long *offsets = bptree_range_alloc(ti->tree_id, from, to, out_count);
-    io_stats_set_id(table, bptree_last_io(ti->tree_id));
+    ti->last_io_id = bptree_last_io(ti->tree_id);
     return offsets;
 }
 
@@ -291,13 +203,10 @@ long *index_range_age_alloc(const char *table, int from, int to,
                             int *out_count) {
     TableIndex *ti = find_entry(table);
     if (out_count) *out_count = 0;
-    if (!ti || !out_count) {
-        io_stats_set_age(table, 0);
-        return NULL;
-    }
+    if (!ti || !out_count) return NULL;
 
     long *offsets = bptree_range_alloc(ti->tree_age, from, to, out_count);
-    io_stats_set_age(table, bptree_last_io(ti->tree_age));
+    ti->last_io_age = bptree_last_io(ti->tree_age);
     return offsets;
 }
 
@@ -337,15 +246,21 @@ int index_height_age(const char *table) {
 }
 
 void index_reset_io_stats(const char *table) {
-    io_stats_reset(table);
+    TableIndex *ti = find_entry(table);
+    if (!ti) return;
+
+    ti->last_io_id = 0;
+    ti->last_io_age = 0;
 }
 
 int index_last_io_id(const char *table) {
-    if (!io_stats_match_table(table)) return 0;
-    return g_thread_io_stats.last_io_id;
+    TableIndex *ti = find_entry(table);
+    if (!ti) return 0;
+    return ti->last_io_id;
 }
 
 int index_last_io_age(const char *table) {
-    if (!io_stats_match_table(table)) return 0;
-    return g_thread_io_stats.last_io_age;
+    TableIndex *ti = find_entry(table);
+    if (!ti) return 0;
+    return ti->last_io_age;
 }

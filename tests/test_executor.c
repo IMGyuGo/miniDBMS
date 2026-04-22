@@ -47,8 +47,12 @@ static int g_fail = 0;
 static int setup_test_env(void) {
     /* data 디렉터리 생성 */
     system("mkdir -p data");
-    /* 기존 임시 파일 삭제 */
+    /* 기존 임시 파일 초기화 (remove 실패 대비 truncate로 처리) */
     remove("data/" TEST_TABLE ".dat");
+    {
+        FILE *f = fopen("data/" TEST_TABLE ".dat", "wb");
+        if (f) fclose(f);
+    }
 
     /* 임시 스키마 파일 생성 */
     system("mkdir -p schema");

@@ -11,10 +11,11 @@ ENGINE_SRCS = src/input/input.c       \
               src/index/index_manager.c
 
 # ── CLI 빌드 소스 ──────────────────────────────────────────
-SRCS = src/main.c              \
-       $(ENGINE_SRCS)          \
-       src/service/db_service.c   \
-       src/threadpool/threadpool.c \
+SRCS = src/main.c                   \
+       $(ENGINE_SRCS)               \
+       src/http/http_message.c      \
+       src/service/db_service.c     \
+       src/threadpool/threadpool.c  \
        src/server/server.c
 
 TARGET = sqlp
@@ -50,16 +51,17 @@ gen_data: tools/gen_data.c
 	$(CC) $(CFLAGS) -o gen_data $^
 
 # ── 단위 테스트 ────────────────────────────────────────────
-TEST_BINS = test_bptree test_index test_parser test_schema test_executor
+# Role A/B 테스트는 해당 파일이 올라오면 아래 주석 해제
+# TEST_BINS_AB = test_bptree test_index
+TEST_BINS = test_parser test_schema test_executor test_http
 
 test: $(TEST_BINS)
 	@echo ""
 	@echo "========== Running Tests =========="
-	@./test_bptree   && echo "[PASS] bptree"   || echo "[FAIL] bptree"
-	@./test_index    && echo "[PASS] index"    || echo "[FAIL] index"
 	@./test_parser   && echo "[PASS] parser"   || echo "[FAIL] parser"
 	@./test_schema   && echo "[PASS] schema"   || echo "[FAIL] schema"
 	@./test_executor && echo "[PASS] executor" || echo "[FAIL] executor"
+	@./test_http     && echo "[PASS] http"     || echo "[FAIL] http"
 	@echo "==================================="
 
 # 역할 A (김용) — B+ Tree 단위 테스트
@@ -83,8 +85,24 @@ test_parser: tests/test_parser.c  \
 
 # 역할 C (김규민) — 스키마 단위 테스트
 test_schema: tests/test_schema.c \
-             src/schema/schema.c
+             src/schema/schema.c  \
+             src/input/input.c    \
+             src/input/lexer.c    \
+             src/parser/parser.c
 	$(CC) $(CFLAGS) -o $@ $^
+
+# 역할 C (김규민) — HTTP 메시지 단위 테스트
+test_http: tests/test_http.c         \
+           src/http/http_message.c   \
+           src/input/input.c         \
+           src/input/lexer.c         \
+           src/parser/parser.c       \
+           src/schema/schema.c       \
+           src/executor/executor.c   \
+           src/bptree/bptree.c       \
+           src/index/index_manager.c \
+           src/service/db_service.c
+	$(CC) $(CFLAGS) -o $@ $^ -lpthread
 
 # 역할 D (김원우) — Executor 단위 테스트
 test_executor: tests/test_executor.c    \
@@ -92,11 +110,14 @@ test_executor: tests/test_executor.c    \
                src/executor/executor.c  \
                src/bptree/bptree.c      \
                src/index/index_manager.c \
+               src/input/input.c        \
+               src/input/lexer.c        \
+               src/parser/parser.c      \
                src/service/db_service.c
 	$(CC) $(CFLAGS) -o $@ $^ -lpthread
 
 # ── 정리 ───────────────────────────────────────────────────
 clean:
-	rm -f $(TARGET) sqlp_sim $(TEST_BINS) test_perf test_perf_sim gen_data
+	rm -f $(TARGET) sqlp_sim $(TEST_BINS) test_bptree test_index test_perf test_perf_sim gen_data
 
 .PHONY: all sim perf perf_sim gen_data test clean

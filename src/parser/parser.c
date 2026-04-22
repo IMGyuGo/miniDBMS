@@ -292,7 +292,9 @@ static ASTNode *parse_select(TokenList *tokens) {
         }
     }
 
-    /* main.c 가 세미콜론 기준으로 이미 문장을 잘라주므로 parser 는 EOF 로 끝나야 한다. */
+    /* 세미콜론이 있으면 소비하고 EOF 를 기대한다.
+     * main.c 처럼 세미콜론을 미리 제거한 경우에도, 테스트처럼 그대로 넘긴 경우에도 동작. */
+    if (peek(tokens, pos)->type == TOKEN_SEMICOLON) pos++;
     if (expect(tokens, &pos, TOKEN_EOF) != SQL_OK) goto fail;
     return node;
 
@@ -341,6 +343,7 @@ static ASTNode *parse_insert(TokenList *tokens) {
                          &value_capacity) != SQL_OK)
         goto fail;
 
+    if (peek(tokens, pos)->type == TOKEN_SEMICOLON) pos++;
     if (expect(tokens, &pos, TOKEN_EOF) != SQL_OK) goto fail;
     return node;
 

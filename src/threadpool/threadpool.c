@@ -6,38 +6,44 @@
  * 설계:
  *   - 링버퍼 잡 큐: head/tail/count 방식
  *   - pthread_mutex_t   : 큐 접근 보호
- *   - pthread_cond_t    : 잡 있음(not_empty) / 잡 공간 있음(not_full) 신호
+ *   - pthread_cond_t    : 잡 있음(not_empty) 신호
  *   - stop 플래그로 안전 종료
  *
  * 스레드 안전성:
  *   - 모든 큐 접근은 mutex 로 보호한다.
- *   - 엔진 호출(db_service_execute_sql) 보호는 server.c 의 engine_lock 이 담당한다.
+ *   - 엔진 호출(db_service_execute_sql) 보호는 g_engine_rwlock 이 담당한다.
+ *     SELECT → rdlock (동시 읽기 허용), INSERT → wrlock (단독 쓰기).
+ *
+ * Role C 연동:
+ *   - JSON 직렬화/파싱은 src/http/http_message.h 의 함수를 사용한다.
+ *   - 상태코드 매핑은 http_response_meta_from_service() 에 위임한다.
  * ========================================================= */
 
+#define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <stdio.h>
 
 #include "threadpool.h"
 #include "../../include/db_service.h"
+#include "../http/http_message.h"
 
 /* ── 전방 선언 ── */
 static void *worker_loop(void *arg);
-static void  serialize_response(char *buf, size_t buf_size,
-                                const DBServiceResult *res);
 static void  send_http_response(int fd, int http_status,
                                 const char *body, size_t body_len);
 
-/* ── 엔진 보호용 전역 rwlock ──────────────────────────────
- * INSERT는 write lock, SELECT는 read lock을 잡는다.
- * MVP 기준: 안전성 최우선이므로 단순 mutex 사용.
- * TODO(RoleD): 성능 개선 시 pthread_rwlock_t 로 교체 검토.
+/* ── 엔진 보호용 rwlock ───────────────────────────────────
+ * SELECT  → rdlock  (동시 읽기 허용)
+ * INSERT  → wrlock  (단독 쓰기)
+ * 판별은 sql 문자열 앞 6자 대소문자 비교로 처리한다.
  * --------------------------------------------------------- */
-static pthread_mutex_t g_engine_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_rwlock_t g_engine_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
-/* ── Threadpool 구조체 (불투명 타입 구현) ──────────────────── */
+/* ── Threadpool 구조체 ────────────────────────────────────── */
 struct Threadpool {
     pthread_t         *threads;
     int                num_threads;
@@ -51,10 +57,10 @@ struct Threadpool {
     pthread_cond_t     cond_not_empty;
     pthread_cond_t     cond_not_full;
 
-    int                stop;  /* 1이면 worker가 큐 소진 후 종료 */
+    int                stop;
 };
 
-/* ── 공개 API 구현 ──────────────────────────────────────── */
+/* ── 공개 API ─────────────────────────────────────────────── */
 
 Threadpool *threadpool_create(int num_threads) {
     if (num_threads <= 0) return NULL;
@@ -83,7 +89,6 @@ Threadpool *threadpool_create(int num_threads) {
 
     for (int i = 0; i < num_threads; i++) {
         if (pthread_create(&tp->threads[i], NULL, worker_loop, tp) != 0) {
-            /* 이미 생성된 스레드들도 정리 */
             tp->stop = 1;
             pthread_cond_broadcast(&tp->cond_not_empty);
             for (int j = 0; j < i; j++)
@@ -103,13 +108,7 @@ int threadpool_submit(Threadpool *tp, const ThreadpoolJob *job) {
 
     pthread_mutex_lock(&tp->mutex);
 
-    if (tp->stop) {
-        pthread_mutex_unlock(&tp->mutex);
-        return 0;
-    }
-
-    if (tp->queue_count >= THREADPOOL_QUEUE_MAX) {
-        /* 큐 가득 참: 드롭 (API_CODE_QUEUE_FULL 에 해당) */
+    if (tp->stop || tp->queue_count >= THREADPOOL_QUEUE_MAX) {
         pthread_mutex_unlock(&tp->mutex);
         return 0;
     }
@@ -134,7 +133,6 @@ void threadpool_destroy(Threadpool *tp) {
     for (int i = 0; i < tp->num_threads; i++)
         pthread_join(tp->threads[i], NULL);
 
-    /* 남은 잡의 conn_fd 닫기 */
     while (tp->queue_count > 0) {
         ThreadpoolJob *j = &tp->queue[tp->queue_head];
         if (j->conn_fd >= 0) close(j->conn_fd);
@@ -165,7 +163,6 @@ static void *worker_loop(void *arg) {
             break;
         }
 
-        /* 잡 하나 꺼내기 */
         ThreadpoolJob job = tp->queue[tp->queue_head];
         tp->queue_head  = (tp->queue_head + 1) % THREADPOOL_QUEUE_MAX;
         tp->queue_count--;
@@ -176,143 +173,57 @@ static void *worker_loop(void *arg) {
         /* ── 잡 처리 ── */
         DBServiceOptions opts;
         db_service_options_init(&opts);
-        opts.force_linear    = job.force_linear;
-        opts.include_profile = job.include_profile;
-        opts.emit_log        = job.emit_log;
+        /* ApiQueryOptions → DBServiceOptions 매핑 */
+        opts.force_linear    = job.options.force_linear;
+        opts.compare         = job.options.compare;
+        opts.include_profile = job.options.include_profile;
+        opts.emit_log        = 0;  /* 서버 모드에서는 stderr 진단 로그 끔 */
 
         DBServiceResult result;
         db_service_result_init(&result);
 
-        /* 엔진은 전역 mutex 로 보호한다 (MVP: 단순 직렬화) */
-        pthread_mutex_lock(&g_engine_lock);
+        /* SELECT 는 rdlock(동시 읽기), 나머지(INSERT 등)는 wrlock(단독 쓰기) */
+        int is_select = (strncasecmp(job.sql, "SELECT", 6) == 0);
+        if (is_select)
+            pthread_rwlock_rdlock(&g_engine_rwlock);
+        else
+            pthread_rwlock_wrlock(&g_engine_rwlock);
+
         db_service_execute_sql(job.sql, &opts, &result);
-        pthread_mutex_unlock(&g_engine_lock);
 
-        /* 응답 직렬화 및 전송 */
+        pthread_rwlock_unlock(&g_engine_rwlock);
+
+        /* ── Role C: DBServiceResult → ApiResponseMeta 변환 ── */
+        ApiResponseMeta meta;
+        http_response_meta_from_service(&result, &meta);
+
+        /* ── Role C: JSON 직렬화 ── */
         char body[65536];
-        serialize_response(body, sizeof(body), &result);
-        size_t body_len = strlen(body);
+        body[0] = '\0';
+        http_serialize_query_response(&meta, &result, body, sizeof(body));
 
-        int http_status = 200;
-        if (result.status != DB_SERVICE_OK) {
-            switch (result.status) {
-                case DB_SERVICE_BAD_REQUEST:  http_status = 400; break;
-                case DB_SERVICE_PARSE_ERROR:  http_status = 400; break;
-                case DB_SERVICE_SCHEMA_ERROR: http_status = 400; break;
-                case DB_SERVICE_EXEC_ERROR:   http_status = 500; break;
-                default:                      http_status = 500; break;
-            }
-        }
+        /* ── HTTP 응답 전송 ── */
+        send_http_response(job.conn_fd, meta.http_status, body, strlen(body));
 
-        send_http_response(job.conn_fd, http_status, body, body_len);
         db_service_result_free(&result);
-
         close(job.conn_fd);
     }
 
     return NULL;
 }
 
-/* ── JSON 직렬화 ─────────────────────────────────────────── */
-
-/* 문자열 안의 특수문자를 JSON 이스케이프해서 buf에 쓴다. */
-static int json_escape(char *buf, size_t buf_size, const char *src) {
-    size_t pos = 0;
-    for (; *src && pos + 2 < buf_size; src++) {
-        unsigned char c = (unsigned char)*src;
-        if (c == '"') {
-            if (pos + 2 >= buf_size) break;
-            buf[pos++] = '\\'; buf[pos++] = '"';
-        } else if (c == '\\') {
-            if (pos + 2 >= buf_size) break;
-            buf[pos++] = '\\'; buf[pos++] = '\\';
-        } else if (c == '\n') {
-            if (pos + 2 >= buf_size) break;
-            buf[pos++] = '\\'; buf[pos++] = 'n';
-        } else if (c == '\r') {
-            if (pos + 2 >= buf_size) break;
-            buf[pos++] = '\\'; buf[pos++] = 'r';
-        } else if (c == '\t') {
-            if (pos + 2 >= buf_size) break;
-            buf[pos++] = '\\'; buf[pos++] = 't';
-        } else {
-            buf[pos++] = (char)c;
-        }
-    }
-    buf[pos] = '\0';
-    return (int)pos;
-}
-
-static void serialize_response(char *buf, size_t buf_size,
-                               const DBServiceResult *res) {
-    size_t pos = 0;
-
-#define APPEND(...) do { \
-    int _n = snprintf(buf + pos, buf_size - pos, __VA_ARGS__); \
-    if (_n > 0) pos += (size_t)_n; \
-    if (pos >= buf_size - 1) { pos = buf_size - 1; goto done; } \
-} while (0)
-
-    if (res->status != DB_SERVICE_OK) {
-        char esc[512];
-        json_escape(esc, sizeof(esc), res->message);
-        APPEND("{\"ok\":false,\"code\":%d,\"error\":\"%s\"}",
-               (int)res->status, esc);
-        goto done;
-    }
-
-    if (res->stmt_type == STMT_INSERT) {
-        APPEND("{\"ok\":true,\"stmt_type\":\"INSERT\",\"rows_affected\":%d}",
-               res->rows_affected);
-        goto done;
-    }
-
-    /* SELECT */
-    APPEND("{\"ok\":true,\"stmt_type\":\"SELECT\"");
-    APPEND(",\"row_count\":%d", res->result_set ? res->result_set->row_count : 0);
-    APPEND(",\"rows\":[");
-
-    if (res->has_result_set && res->result_set) {
-        ResultSet *rs = res->result_set;
-        for (int r = 0; r < rs->row_count; r++) {
-            if (r > 0) APPEND(",");
-            APPEND("{");
-            for (int c = 0; c < rs->col_count; c++) {
-                if (c > 0) APPEND(",");
-                char key[128], val[512];
-                json_escape(key, sizeof(key), rs->col_names[c]);
-                json_escape(val, sizeof(val),
-                            (rs->rows[r].values && rs->rows[r].values[c])
-                            ? rs->rows[r].values[c] : "");
-                APPEND("\"%s\":\"%s\"", key, val);
-            }
-            APPEND("}");
-        }
-    }
-    APPEND("]");
-
-    if (res->has_profile) {
-        char path[64];
-        json_escape(path, sizeof(path), res->profile.access_path);
-        APPEND(",\"profile\":{\"access_path\":\"%s\","
-               "\"elapsed_ms\":%.3f,\"tree_io\":%d,\"row_count\":%d}",
-               path,
-               res->profile.elapsed_ms,
-               res->profile.tree_io,
-               res->profile.row_count);
-    }
-
-    APPEND("}");
-
-done:
-    buf[buf_size - 1] = '\0';
-#undef APPEND
-}
-
-/* ── HTTP 응답 전송 ──────────────────────────────────────── */
+/* ── HTTP 응답 전송 (transport 계층: Role D 소유) ─────────── */
 
 static void send_http_response(int fd, int http_status,
                                const char *body, size_t body_len) {
+    const char *status_str =
+        (http_status == 200) ? "OK" :
+        (http_status == 400) ? "Bad Request" :
+        (http_status == 404) ? "Not Found" :
+        (http_status == 405) ? "Method Not Allowed" :
+        (http_status == 503) ? "Service Unavailable" :
+                               "Internal Server Error";
+
     char header[512];
     int hlen = snprintf(header, sizeof(header),
         "HTTP/1.1 %d %s\r\n"
@@ -320,25 +231,20 @@ static void send_http_response(int fd, int http_status,
         "Content-Length: %zu\r\n"
         "Connection: close\r\n"
         "\r\n",
-        http_status,
-        (http_status == 200) ? "OK" :
-        (http_status == 400) ? "Bad Request" : "Internal Server Error",
-        body_len);
+        http_status, status_str, body_len);
 
-    /* 헤더 전송 */
     if (hlen > 0) {
-        ssize_t sent = 0, total = (ssize_t)hlen;
-        while (sent < total) {
-            ssize_t n = write(fd, header + sent, (size_t)(total - sent));
+        ssize_t sent = 0;
+        while (sent < (ssize_t)hlen) {
+            ssize_t n = write(fd, header + sent, (size_t)(hlen - sent));
             if (n <= 0) return;
             sent += n;
         }
     }
 
-    /* 바디 전송 */
-    ssize_t sent = 0, total = (ssize_t)body_len;
-    while (sent < total) {
-        ssize_t n = write(fd, body + sent, (size_t)(total - sent));
+    ssize_t sent = 0;
+    while (sent < (ssize_t)body_len) {
+        ssize_t n = write(fd, body + sent, (size_t)(body_len - (size_t)sent));
         if (n <= 0) return;
         sent += n;
     }
