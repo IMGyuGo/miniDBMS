@@ -5,7 +5,7 @@
  * threadpool.h — 스레드 풀 내부 계약
  *
  * 담당: Role D
- * 용도: src/server/** 가 이 헤더를 include 해서 스레드 풀을 사용한다.
+ * 용도: src/server 가 이 헤더를 include 해서 스레드 풀을 사용한다.
  *       엔진 계층(executor/service)은 이 헤더를 알지 못한다.
  *
  * 설계:

@@ -5,13 +5,18 @@
 #include "../include/interface.h"
 #include "../include/index_manager.h"
 #include "executor/executor_internal.h"
+#include "server/server.h"
 
 /*
  * main.c
  *
- * sqlp / sqlp_sim의 CLI 진입점이다.
+ * sqlp 의 통합 진입점이다.
  *
- * 전체 흐름:
+ * 모드:
+ *   CLI 모드 (기본): SQL 파일을 읽어 실행한다.
+ *   서버 모드 (--server PORT): HTTP API 서버를 시작한다.
+ *
+ * CLI 전체 흐름:
  * 1. 명령행 옵션을 읽는다.
  * 2. SQL 파일을 통째로 읽는다.
  * 3. 전체를 토큰화한다.
@@ -307,12 +312,19 @@ static int run_statement(TokenList *tokens, RunMode mode) {
 
 /* 옵션 파싱 에러에서 공통으로 쓰는 usage 출력이다. */
 static void print_usage(const char *argv0) {
-    fprintf(stderr, "Usage: %s [--force-linear | --compare] <sql_file>\n", argv0);
+    fprintf(stderr,
+        "Usage:\n"
+        "  CLI 모드: %s [--force-linear | --compare] <sql_file>\n"
+        "  서버 모드: %s --server <PORT> [--threads <N>]\n",
+        argv0, argv0);
 }
 
 int main(int argc, char *argv[]) {
     int force_linear = 0;
     int compare = 0;
+    int server_mode = 0;
+    int server_port = 0;
+    int server_threads = 4;  /* worker 스레드 기본값 */
     const char *sql_path = NULL;
 
     /*
@@ -320,12 +332,23 @@ int main(int argc, char *argv[]) {
      *   ./sqlp file.sql
      *   ./sqlp --force-linear file.sql
      *   ./sqlp --compare file.sql
+     *   ./sqlp --server 8080
+     *   ./sqlp --server 8080 --threads 8
      */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--force-linear") == 0) {
             force_linear = 1;
         } else if (strcmp(argv[i], "--compare") == 0) {
             compare = 1;
+        } else if (strcmp(argv[i], "--server") == 0) {
+            server_mode = 1;
+            if (i + 1 < argc && argv[i+1][0] != '-') {
+                server_port = atoi(argv[++i]);
+            }
+        } else if (strcmp(argv[i], "--threads") == 0) {
+            if (i + 1 < argc) {
+                server_threads = atoi(argv[++i]);
+            }
         } else if (argv[i][0] == '-') {
             print_usage(argv[0]);
             return 1;
@@ -335,6 +358,17 @@ int main(int argc, char *argv[]) {
             print_usage(argv[0]);
             return 1;
         }
+    }
+
+    /* ── 서버 모드 ── */
+    if (server_mode) {
+        if (server_port <= 0 || server_port > 65535) {
+            fprintf(stderr, "Error: invalid port '%d'\n", server_port);
+            print_usage(argv[0]);
+            return 1;
+        }
+        if (server_threads <= 0) server_threads = 4;
+        return server_run(server_port, server_threads) == 0 ? 0 : 1;
     }
 
     if (!sql_path || (force_linear && compare)) {

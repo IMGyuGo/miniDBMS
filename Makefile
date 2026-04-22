@@ -1,27 +1,33 @@
 CC     = gcc
 CFLAGS = -std=c99 -Wall -Wextra -Iinclude
 
-# ── 메인 빌드 소스 ─────────────────────────────────────────
-SRCS = src/main.c            \
-       src/input/input.c     \
-       src/input/lexer.c     \
-       src/parser/parser.c   \
-       src/schema/schema.c   \
-       src/executor/executor.c \
-       src/bptree/bptree.c   \
-       src/index/index_manager.c
+# ── 공통 엔진 소스 ─────────────────────────────────────────
+ENGINE_SRCS = src/input/input.c       \
+              src/input/lexer.c       \
+              src/parser/parser.c     \
+              src/schema/schema.c     \
+              src/executor/executor.c \
+              src/bptree/bptree.c     \
+              src/index/index_manager.c
+
+# ── CLI 빌드 소스 ──────────────────────────────────────────
+SRCS = src/main.c              \
+       $(ENGINE_SRCS)          \
+       src/service/db_service.c   \
+       src/threadpool/threadpool.c \
+       src/server/server.c
 
 TARGET = sqlp
 
-# ── 기본 빌드 ──────────────────────────────────────────────
+# ── 기본 빌드 (CLI + 서버 모드 통합) ──────────────────────
 all: $(TARGET)
 
 $(TARGET): $(SRCS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ -lpthread
 
 # ── 디스크 I/O 시뮬레이션 빌드 (B+ 트리 높이별 시간 비교용) ──
 sim: $(SRCS)
-	$(CC) $(CFLAGS) -DBPTREE_SIMULATE_IO=1 -o sqlp_sim $^
+	$(CC) $(CFLAGS) -DBPTREE_SIMULATE_IO=1 -o sqlp_sim $^ -lpthread
 
 # ── 성능 비교 실행 파일 (별도 main) ───────────────────────
 PERF_SRCS = tests/test_perf.c       \
@@ -81,12 +87,13 @@ test_schema: tests/test_schema.c \
 	$(CC) $(CFLAGS) -o $@ $^
 
 # 역할 D (김원우) — Executor 단위 테스트
-test_executor: tests/test_executor.c  \
-               src/schema/schema.c    \
-               src/executor/executor.c \
-               src/bptree/bptree.c    \
-               src/index/index_manager.c
-	$(CC) $(CFLAGS) -o $@ $^
+test_executor: tests/test_executor.c    \
+               src/schema/schema.c      \
+               src/executor/executor.c  \
+               src/bptree/bptree.c      \
+               src/index/index_manager.c \
+               src/service/db_service.c
+	$(CC) $(CFLAGS) -o $@ $^ -lpthread
 
 # ── 정리 ───────────────────────────────────────────────────
 clean:
